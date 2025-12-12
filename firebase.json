@@ -1,0 +1,83 @@
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "max-age=31536000"
+          }
+        ]
+      },
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          },
+          {
+            "key": "X-XSS-Protection",
+            "value": "1; mode=block"
+          }
+        ]
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "perfacto-7aa56",
+          "appId": "1:22217432676:android:d91f64a05ae859607ac971",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "perfacto-7aa56",
+          "appId": "1:22217432676:ios:68e03d910962699c7ac971",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "perfacto-7aa56",
+          "appId": "1:22217432676:ios:316ea74941846c327ac971",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "perfacto-7aa56",
+          "configurations": {
+            "android": "1:22217432676:android:d91f64a05ae859607ac971",
+            "ios": "1:22217432676:ios:68e03d910962699c7ac971",
+            "macos": "1:22217432676:ios:316ea74941846c327ac971",
+            "web": "1:22217432676:web:250ac9e28d4726217ac971",
+            "windows": "1:22217432676:web:2675a3443a1e072d7ac971"
+          }
+        }
+      }
+    }
+  }
+}

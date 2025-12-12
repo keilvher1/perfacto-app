@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "22217432676",
+    "project_id": "perfacto-7aa56",
+    "storage_bucket": "perfacto-7aa56.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:22217432676:android:d91f64a05ae859607ac971",
+        "android_client_info": {
+          "package_name": "com.example.perfacto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAW9Nirr3OAJPuAv0cxKnVBAGRPyF9QWTE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
