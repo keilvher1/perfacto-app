@@ -258,4 +258,48 @@ class ApiService {
     final response = await get('/perfacto/every/reviews/place/$placeId');
     return response['data'] as List<dynamic>;
   }
+
+  /// 회원가입
+  static Future<Map<String, dynamic>> signUp({
+    required String email,
+    required String password,
+    required String nickname,
+  }) async {
+    final response = await post('/perfacto/auth/signup', {
+      'email': email,
+      'password': password,
+      'nickname': nickname,
+    });
+
+    // 토큰 저장
+    if (response['accessToken'] != null) {
+      setTokens(
+        accessToken: response['accessToken'],
+        refreshToken: response['refreshToken'],
+      );
+    }
+
+    return response;
+  }
+
+  /// 이메일 로그인
+  static Future<Map<String, dynamic>> login({
+    required String email,
+    required String password,
+  }) async {
+    final response = await post('/perfacto/auth/login', {
+      'email': email,
+      'password': password,
+    });
+
+    // 토큰 저장
+    if (response['accessToken'] != null) {
+      setTokens(
+        accessToken: response['accessToken'],
+        refreshToken: response['refreshToken'],
+      );
+    }
+
+    return response;
+  }
 }

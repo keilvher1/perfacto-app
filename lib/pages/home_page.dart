@@ -4,14 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_parsing/path_parsing.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/place_model.dart';
 import '../models/review_model.dart';
-import '../services/firestore_service.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import 'login_page.dart';
-import 'review_write_page.dart';
 import 'my_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -45,41 +44,30 @@ class _HomePageState extends State<HomePage> {
     'accommodation',
   }; // 초기값: 모든 카테고리 선택
 
-  // Firestore 서비스
-  final FirestoreService _firestoreService = FirestoreService();
+  // 백엔드 API 데이터
   List<PlaceModel> _firestorePlaces = [];
 
   @override
   void initState() {
     super.initState();
     _loadGeoJsonData();
-    _checkAndAddSampleData();
-    _listenToFirestorePlaces();
+    _loadPlacesFromBackend();
   }
 
-  // Firestore에 데이터가 없으면 샘플 데이터 추가
-  Future<void> _checkAndAddSampleData() async {
-    final places = await _firestoreService.getPlaces().first;
-    if (places.isEmpty) {
-      print('Firestore에 데이터가 없습니다. 샘플 데이터를 추가합니다...');
-      await _firestoreService.addSampleData();
-      print('샘플 데이터 추가 완료!');
-    } else {
-      print('Firestore에 이미 ${places.length}개의 장소가 있습니다.');
+  // 백엔드에서 장소 데이터 가져오기
+  Future<void> _loadPlacesFromBackend() async {
+    try {
+      // TODO: 모든 카테고리의 장소 가져오기
+      // 현재는 빈 리스트로 시작
+      setState(() {
+        _firestorePlaces = [];
+      });
+    } catch (e) {
+      print('장소 데이터 로딩 실패: $e');
     }
   }
 
-  // Firestore에서 실시간으로 장소 데이터 가져오기
-  void _listenToFirestorePlaces() {
-    _firestoreService.getPlaces().listen((places) {
-      setState(() {
-        _firestorePlaces = places;
-      });
-      _addFirestoreMarkers();
-    });
-  }
-
-  // Firestore 장소를 마커로 추가
+  // 백엔드 장소를 마커로 추가
   void _addFirestoreMarkers() async {
     final Set<Marker> newMarkers = {};
 
@@ -974,7 +962,6 @@ class _BottomSheetContentForFirestoreState
   List<ReviewModel> _reviews = [];
   bool _isLoading = true;
   bool _isAddressExpanded = false;
-  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   void initState() {
@@ -986,9 +973,8 @@ class _BottomSheetContentForFirestoreState
   // 리뷰 데이터를 한 번만 로드
   Future<void> _loadReviews() async {
     try {
-      final reviews = await _firestoreService
-          .getReviewsByPlaceId(widget.place.id)
-          .first;
+      // TODO: 백엔드 API에서 리뷰 가져오기
+      final reviews = <ReviewModel>[];
       if (mounted) {
         setState(() {
           _reviews = reviews;
@@ -1863,11 +1849,8 @@ class _BottomSheetContentForFirestoreState
                               // 저장 버튼
                               GestureDetector(
                                 onTap: () async {
-                                  final firestoreService = FirestoreService();
-                                  final success = await firestoreService
-                                      .updatePlace(widget.place.id, {
-                                        'isSaved': !widget.place.isSaved,
-                                      });
+                                  // TODO: 백엔드 API로 북마크 추가/제거
+                                  final success = false;
 
                                   if (success && mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -1923,9 +1906,8 @@ class _BottomSheetContentForFirestoreState
                                 child: GestureDetector(
                                   onTap: () async {
                                     // 로그인 여부 확인
-                                    final user =
-                                        FirebaseAuth.instance.currentUser;
-                                    if (user == null) {
+                                    final isLoggedIn = await AuthService.isLoggedIn();
+                                    if (!isLoggedIn) {
                                       // 로그인되지 않은 경우 로그인 페이지 표시
                                       final result = await Navigator.push(
                                         context,
@@ -1936,29 +1918,16 @@ class _BottomSheetContentForFirestoreState
                                       );
                                       // 로그인 성공 시 리뷰 작성 페이지로 이동
                                       if (result == true && mounted) {
-                                        Navigator.pop(context); // 바텀시트 닫기
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                ReviewWritePage(
-                                                  placeName: widget.place.name,
-                                                  placeId: widget.place.id,
-                                                ),
-                                          ),
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('리뷰 작성 기능은 준비 중입니다')),
                                         );
                                       }
                                     } else {
-                                      // 이미 로그인된 경우 리뷰 작성 페이지로 이동
-                                      Navigator.pop(context); // 바텀시트 닫기
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => ReviewWritePage(
-                                            placeName: widget.place.name,
-                                            placeId: widget.place.id,
-                                          ),
-                                        ),
+                                      // 이미 로그인된 경우
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('리뷰 작성 기능은 준비 중입니다')),
                                       );
                                     }
                                   },
@@ -2201,7 +2170,7 @@ class _BottomSheetContentForFirestoreState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      review.userId,
+                      review.userName,
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -2218,7 +2187,8 @@ class _BottomSheetContentForFirestoreState
                   ],
                 ),
               ),
-              if (review.isLocationVerified)
+              // Location verification badge removed
+              if (false)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -2284,7 +2254,7 @@ class _BottomSheetContentForFirestoreState
 
           // 리뷰 텍스트
           Text(
-            review.reviewText,
+            review.comment,
             style: const TextStyle(
               fontSize: 12,
               color: Color(0xFF1B1B1B),

@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class PlaceModel {
@@ -30,11 +29,10 @@ class PlaceModel {
     this.isSaved = false,
   });
 
-  // Firestore에서 데이터 가져오기
-  factory PlaceModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  // JSON에서 데이터 가져오기
+  factory PlaceModel.fromJson(Map<String, dynamic> data) {
     return PlaceModel(
-      id: doc.id,
+      id: data['id']?.toString() ?? '',
       name: data['name'] ?? '',
       category: data['category'] ?? '',
       tag: data['tag'] ?? '',
@@ -42,16 +40,19 @@ class PlaceModel {
       address: data['address'] ?? '',
       latitude: (data['latitude'] ?? 0.0).toDouble(),
       longitude: (data['longitude'] ?? 0.0).toDouble(),
-      imageUrls: List<String>.from(data['imageUrls'] ?? []),
+      imageUrls: data['imageUrls'] != null
+          ? List<String>.from(data['imageUrls'])
+          : [],
       rating: (data['rating'] ?? 0.0).toDouble(),
       reviewCount: data['reviewCount'] ?? 0,
       isSaved: data['isSaved'] ?? false,
     );
   }
 
-  // Firestore에 저장하기
-  Map<String, dynamic> toFirestore() {
+  // JSON으로 변환
+  Map<String, dynamic> toJson() {
     return {
+      'id': id,
       'name': name,
       'category': category,
       'tag': tag,
@@ -63,7 +64,6 @@ class PlaceModel {
       'rating': rating,
       'reviewCount': reviewCount,
       'isSaved': isSaved,
-      'createdAt': FieldValue.serverTimestamp(),
     };
   }
 

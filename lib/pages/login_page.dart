@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:perfacto/services/auth_service.dart';
 import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -40,8 +40,8 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      // Firebase Auth로 로그인
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      // 백엔드 API로 로그인
+      await AuthService.signIn(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
@@ -50,22 +50,8 @@ class _LoginPageState extends State<LoginPage> {
         // 로그인 성공 - 이전 화면으로 돌아가기
         Navigator.pop(context, true); // true를 전달하여 로그인 성공 알림
       }
-    } on FirebaseAuthException catch (e) {
-      String errorMessage = '로그인에 실패했습니다.';
-      if (e.code == 'user-not-found') {
-        errorMessage = '존재하지 않는 이메일입니다.';
-      } else if (e.code == 'wrong-password') {
-        errorMessage = '비밀번호가 올바르지 않습니다.';
-      } else if (e.code == 'invalid-email') {
-        errorMessage = '유효하지 않은 이메일 형식입니다.';
-      } else if (e.code == 'user-disabled') {
-        errorMessage = '비활성화된 계정입니다.';
-      } else if (e.code == 'invalid-credential') {
-        errorMessage = '이메일 또는 비밀번호가 올바르지 않습니다.';
-      }
-      _showErrorDialog(errorMessage);
     } catch (e) {
-      _showErrorDialog('로그인 중 오류가 발생했습니다.');
+      _showErrorDialog(e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() {

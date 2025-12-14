@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:perfacto/services/auth_service.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -57,22 +56,12 @@ class _SignupPageState extends State<SignupPage> {
     });
 
     try {
-      // Firebase Auth로 회원가입
-      final userCredential =
-          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      // 백엔드 API로 회원가입
+      await AuthService.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        nickname: _nameController.text.trim(),
       );
-
-      // Firestore에 사용자 정보 저장
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .set({
-        'name': _nameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
 
       if (mounted) {
         // 회원가입 성공 - 로그인 페이지로 돌아가기
@@ -84,18 +73,8 @@ class _SignupPageState extends State<SignupPage> {
           ),
         );
       }
-    } on FirebaseAuthException catch (e) {
-      String errorMessage = '회원가입에 실패했습니다.';
-      if (e.code == 'weak-password') {
-        errorMessage = '비밀번호가 너무 약합니다.';
-      } else if (e.code == 'email-already-in-use') {
-        errorMessage = '이미 사용 중인 이메일입니다.';
-      } else if (e.code == 'invalid-email') {
-        errorMessage = '유효하지 않은 이메일 형식입니다.';
-      }
-      _showErrorDialog(errorMessage);
     } catch (e) {
-      _showErrorDialog('회원가입 중 오류가 발생했습니다.');
+      _showErrorDialog(e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) {
         setState(() {

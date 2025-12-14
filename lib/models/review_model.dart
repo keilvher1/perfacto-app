@@ -1,51 +1,45 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class ReviewModel {
   final String id;
-  final String placeId;
-  final String placeName;
-  final String userId;
-  final String reviewText;
+  final String userName;
+  final double rating;
+  final String comment;
   final List<String> imageUrls;
-  final bool isLocationVerified;
   final DateTime createdAt;
 
   ReviewModel({
     required this.id,
-    required this.placeId,
-    required this.placeName,
-    required this.userId,
-    required this.reviewText,
-    required this.imageUrls,
-    required this.isLocationVerified,
+    required this.userName,
+    required this.rating,
+    required this.comment,
+    this.imageUrls = const [],
     required this.createdAt,
   });
 
-  // Firestore에서 데이터 가져오기
-  factory ReviewModel.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+  // JSON에서 데이터 가져오기
+  factory ReviewModel.fromJson(Map<String, dynamic> data) {
     return ReviewModel(
-      id: doc.id,
-      placeId: data['placeId'] ?? '',
-      placeName: data['placeName'] ?? '',
-      userId: data['userId'] ?? '',
-      reviewText: data['reviewText'] ?? '',
-      imageUrls: List<String>.from(data['imageUrls'] ?? []),
-      isLocationVerified: data['isLocationVerified'] ?? false,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      id: data['id']?.toString() ?? '',
+      userName: data['userName'] ?? '',
+      rating: (data['rating'] ?? 0.0).toDouble(),
+      comment: data['comment'] ?? '',
+      imageUrls: data['imageUrls'] != null
+          ? List<String>.from(data['imageUrls'])
+          : [],
+      createdAt: data['createdAt'] != null
+          ? DateTime.parse(data['createdAt'])
+          : DateTime.now(),
     );
   }
 
-  // Firestore에 저장할 데이터
-  Map<String, dynamic> toFirestore() {
+  // JSON으로 변환
+  Map<String, dynamic> toJson() {
     return {
-      'placeId': placeId,
-      'placeName': placeName,
-      'userId': userId,
-      'reviewText': reviewText,
+      'id': id,
+      'userName': userName,
+      'rating': rating,
+      'comment': comment,
       'imageUrls': imageUrls,
-      'isLocationVerified': isLocationVerified,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 }
