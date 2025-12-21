@@ -239,24 +239,109 @@ class ApiService {
     await delete('/perfacto/api/bookmarks/$placeId');
   }
 
-  /// 리뷰 작성
+  /// 리뷰 작성 (3단계 리뷰 시스템)
   static Future<Map<String, dynamic>> createReview({
     required int placeId,
-    required double rating,
-    required String content,
+    required String overallRating, // 'GOOD', 'NEUTRAL', 'BAD'
+    required List<String> reasons, // ReviewReason enum values
+    int? comparedPlaceId,
+    String? comparisonResult, // 'BETTER', 'SIMILAR', 'WORSE'
   }) async {
-    final response = await postAuth('/perfacto/api/reviews', {
+    final Map<String, dynamic> body = {
       'placeId': placeId,
-      'rating': rating,
-      'content': content,
-    });
+      'overallRating': overallRating,
+      'reasons': reasons,
+    };
+
+    if (comparedPlaceId != null) body['comparedPlaceId'] = comparedPlaceId;
+    if (comparisonResult != null) body['comparisonResult'] = comparisonResult;
+
+    final response = await postAuth('/perfacto/api/reviews', body);
     return response['data'];
   }
 
-  /// 장소의 리뷰 목록 조회
-  static Future<List<dynamic>> getReviews(int placeId) async {
-    final response = await get('/perfacto/every/reviews/place/$placeId');
+  /// 리뷰 삭제
+  static Future<void> deleteReview(int reviewId) async {
+    await delete('/perfacto/api/reviews/$reviewId');
+  }
+
+  /// 장소의 전체 리뷰 목록 조회
+  static Future<List<dynamic>> getReviews(int placeId, {int page = 0, int size = 20}) async {
+    final response = await get('/perfacto/every/reviews/place/$placeId?page=$page&size=$size');
+    return response['data']['content'] as List<dynamic>;
+  }
+
+  /// 팔로잉 사용자의 리뷰 목록 조회
+  static Future<List<dynamic>> getFollowingReviews(int placeId) async {
+    final response = await getAuth('/perfacto/api/reviews/place/$placeId/following');
     return response['data'] as List<dynamic>;
+  }
+
+  /// 사용자의 리뷰 목록 조회
+  static Future<List<dynamic>> getUserReviews(int userId, {int page = 0, int size = 20}) async {
+    final response = await get('/perfacto/every/reviews/user/$userId?page=$page&size=$size');
+    return response['data']['content'] as List<dynamic>;
+  }
+
+  /// 리뷰에 도움이 됨 추가
+  static Future<void> addReviewHelpful(int reviewId) async {
+    await postAuth('/perfacto/api/reviews/$reviewId/helpful', {});
+  }
+
+  // ============ 팔로우 관련 API ============
+
+  /// 팔로우 추가
+  static Future<void> follow(int userId) async {
+    await postAuth('/perfacto/api/follows/$userId', {});
+  }
+
+  /// 언팔로우
+  static Future<void> unfollow(int userId) async {
+    await delete('/perfacto/api/follows/$userId');
+  }
+
+  /// 팔로잉 목록 조회
+  static Future<List<dynamic>> getFollowing(int userId) async {
+    final response = await get('/perfacto/every/follows/$userId/following');
+    return response['data'] as List<dynamic>;
+  }
+
+  /// 팔로워 목록 조회
+  static Future<List<dynamic>> getFollowers(int userId) async {
+    final response = await get('/perfacto/every/follows/$userId/followers');
+    return response['data'] as List<dynamic>;
+  }
+
+  /// 팔로우 여부 확인
+  static Future<bool> isFollowing(int userId) async {
+    final response = await getAuth('/perfacto/api/follows/$userId/status');
+    return response['data']['isFollowing'] as bool;
+  }
+
+  // ============ 저장된 장소 관련 API ============
+
+  /// 장소 저장
+  static Future<void> savePlace(int placeId, {String? memo}) async {
+    await postAuth('/perfacto/api/saved-places/$placeId', {
+      if (memo != null) 'memo': memo,
+    });
+  }
+
+  /// 장소 저장 취소
+  static Future<void> unsavePlace(int placeId) async {
+    await delete('/perfacto/api/saved-places/$placeId');
+  }
+
+  /// 저장된 장소 목록 조회
+  static Future<List<dynamic>> getSavedPlaces() async {
+    final response = await getAuth('/perfacto/api/saved-places');
+    return response['data'] as List<dynamic>;
+  }
+
+  /// 장소 저장 여부 확인
+  static Future<bool> isSaved(int placeId) async {
+    final response = await getAuth('/perfacto/api/saved-places/$placeId/status');
+    return response['data']['isSaved'] as bool;
   }
 
   /// 회원가입
