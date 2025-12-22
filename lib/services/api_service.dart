@@ -187,6 +187,25 @@ class ApiService {
     return response['data'] as List<dynamic>;
   }
 
+  /// ELO 랭킹 기반 장소 조회
+  static Future<List<dynamic>> getRanking({
+    int? categoryId,
+    String? district,
+    int limit = 50,
+  }) async {
+    String path = '/perfacto/api/places/ranking?limit=$limit';
+
+    if (categoryId != null) {
+      path += '&categoryId=$categoryId';
+    }
+    if (district != null) {
+      path += '&district=$district';
+    }
+
+    final response = await get(path);
+    return response['data'] as List<dynamic>;
+  }
+
   /// 카카오 로그인 (code → 토큰)
   static Future<Map<String, dynamic>> kakaoLogin(String code) async {
     final response = await get('/perfacto/auth/kakao-login?code=$code');
@@ -386,5 +405,35 @@ class ApiService {
     }
 
     return response;
+  }
+
+  // ==================== 사용자 검색 API ====================
+
+  /// 사용자 검색 (닉네임 또는 이름으로 검색)
+  static Future<List<Map<String, dynamic>>> searchUsers(String query) async {
+    final response = await getAuth('/perfacto/api/user/search?query=$query');
+
+    if (response['data'] != null) {
+      return List<Map<String, dynamic>>.from(response['data']);
+    }
+
+    return [];
+  }
+
+  /// 특정 사용자 정보 조회
+  static Future<Map<String, dynamic>> getUserById(int userId) async {
+    final response = await getAuth('/perfacto/api/user/$userId');
+    return response['data'];
+  }
+
+  /// 특정 사용자의 저장한 장소 + 리뷰 남긴 장소 조회
+  static Future<List<Map<String, dynamic>>> getUserPlaces(int userId) async {
+    final response = await get('/api/saved-places/user/$userId');
+
+    if (response['data'] != null && response['data'] is List) {
+      return List<Map<String, dynamic>>.from(response['data']);
+    }
+
+    return [];
   }
 }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'home_page.dart';
-import 'hot_page.dart';
-import 'point_page.dart';
+import 'friends_page.dart';
+import 'ranking_page.dart';
 import 'my_page.dart';
 
 class MainScreen extends StatefulWidget {
@@ -19,8 +19,8 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _pages = [
     const HomePage(),
-    const HotPage(),
-    const PointPage(),
+    const FriendsPage(),
+    const RankingPage(),
     const MyPage(),
   ];
 
