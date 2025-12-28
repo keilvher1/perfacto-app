@@ -1,64 +1,44 @@
 import 'package:flutter/material.dart';
-import '../models/place_model.dart';
-import '../services/api_service.dart';
-import '../services/auth_service.dart';
-import 'place_detail_page.dart';
-import 'login_page.dart';
+import 'package:perfacto/models/place_model.dart';
+import 'package:perfacto/services/api_service.dart';
+import 'package:perfacto/pages/place_detail_page.dart';
 
-/// 저장된 장소 페이지
-class SavedPlacesPage extends StatefulWidget {
-  const SavedPlacesPage({super.key});
+/// 특정 사용자의 저장한 장소 + 리뷰 남긴 장소 페이지
+class UserPlacesPage extends StatefulWidget {
+  final int userId;
+  final String userName;
+
+  const UserPlacesPage({
+    super.key,
+    required this.userId,
+    required this.userName,
+  });
 
   @override
-  State<SavedPlacesPage> createState() => _SavedPlacesPageState();
+  State<UserPlacesPage> createState() => _UserPlacesPageState();
 }
 
-class _SavedPlacesPageState extends State<SavedPlacesPage> {
-  List<PlaceModel> _savedPlaces = [];
+class _UserPlacesPageState extends State<UserPlacesPage> {
+  List<PlaceModel> _places = [];
   bool _isLoading = true;
   String? _error;
-  bool _isLoggedIn = false;
 
   @override
   void initState() {
     super.initState();
-    _checkLoginAndLoadPlaces();
+    _loadUserPlaces();
   }
 
-  Future<void> _checkLoginAndLoadPlaces() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    // 로그인 여부 확인
-    final loggedIn = await AuthService.isLoggedIn();
-
-    if (!loggedIn) {
-      setState(() {
-        _isLoggedIn = false;
-        _isLoading = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _isLoggedIn = true;
-    });
-
-    await _loadSavedPlaces();
-  }
-
-  Future<void> _loadSavedPlaces() async {
+  Future<void> _loadUserPlaces() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      final data = await ApiService.getSavedPlaces();
+      final data = await ApiService.getUserPlaces(widget.userId);
       setState(() {
-        _savedPlaces = data.map((p) => PlaceModel.fromJson(p)).toList();
+        _places = data.map((p) => PlaceModel.fromJson(p)).toList();
         _isLoading = false;
       });
     } catch (e) {
@@ -66,28 +46,6 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
         _error = e.toString();
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _unsavePlace(int placeId) async {
-    try {
-      await ApiService.unsavePlace(placeId);
-      await _loadSavedPlaces(); // 새로고침
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('저장이 취소되었습니다')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('오류가 발생했습니다: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 
@@ -102,9 +60,9 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          '저장한 장소',
-          style: TextStyle(
+        title: Text(
+          '${widget.userName}님의 장소',
+          style: const TextStyle(
             color: Colors.black,
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -115,64 +73,7 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xFF4E8AD9)),
             )
-          : !_isLoggedIn
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.login,
-                        size: 64,
-                        color: Color(0xFF4E8AD9),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '로그인이 필요합니다',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        '저장한 장소를 보려면 로그인해주세요',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF8D8D8D),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4E8AD9),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LoginPage(),
-                            ),
-                          ).then((loggedIn) {
-                            // 로그인 후 돌아왔을 때 다시 로드
-                            if (loggedIn == true) {
-                              _checkLoginAndLoadPlaces();
-                            }
-                          });
-                        },
-                        child: const Text('로그인하기'),
-                      ),
-                    ],
-                  ),
-                )
-              : _error != null
+          : _error != null
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -194,35 +95,27 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
                       ),
                       const SizedBox(height: 24),
                       ElevatedButton(
-                        onPressed: _loadSavedPlaces,
+                        onPressed: _loadUserPlaces,
                         child: const Text('다시 시도'),
                       ),
                     ],
                   ),
                 )
-              : _savedPlaces.isEmpty
+              : _places.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Icon(
-                            Icons.bookmark_border,
+                            Icons.place_outlined,
                             size: 64,
                             color: Color(0xFFD9D9D9),
                           ),
                           const SizedBox(height: 16),
-                          const Text(
-                            '저장한 장소가 없습니다',
-                            style: TextStyle(
+                          Text(
+                            '${widget.userName}님의 장소가 없습니다',
+                            style: const TextStyle(
                               fontSize: 16,
-                              color: Color(0xFF8D8D8D),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            '마음에 드는 장소를 저장해보세요',
-                            style: TextStyle(
-                              fontSize: 14,
                               color: Color(0xFF8D8D8D),
                             ),
                           ),
@@ -230,13 +123,13 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
                       ),
                     )
                   : RefreshIndicator(
-                      onRefresh: _loadSavedPlaces,
+                      onRefresh: _loadUserPlaces,
                       color: const Color(0xFF4E8AD9),
                       child: ListView.builder(
                         padding: const EdgeInsets.all(16),
-                        itemCount: _savedPlaces.length,
+                        itemCount: _places.length,
                         itemBuilder: (context, index) {
-                          return _buildPlaceCard(_savedPlaces[index]);
+                          return _buildPlaceCard(_places[index]);
                         },
                       ),
                     ),
@@ -277,11 +170,28 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
                 color: const Color(0xFFD9D9D9),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(
-                Icons.place,
-                size: 40,
-                color: Colors.white,
-              ),
+              child: place.imageUrls.isNotEmpty
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        place.imageUrls.first,
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.place,
+                            size: 40,
+                            color: Colors.white,
+                          );
+                        },
+                      ),
+                    )
+                  : const Icon(
+                      Icons.place,
+                      size: 40,
+                      color: Colors.white,
+                    ),
             ),
             const SizedBox(width: 16),
 
@@ -353,7 +263,7 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
                       ),
                       const SizedBox(width: 2),
                       Text(
-                        '${place.reviewCount ?? 0}',
+                        '${place.reviewCount}',
                         style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF8D8D8D),
@@ -365,36 +275,13 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
               ),
             ),
 
-            // 저장 해제 버튼
-            IconButton(
-              icon: const Icon(
+            // 북마크 아이콘 (저장 상태 표시)
+            if (place.isSaved)
+              const Icon(
                 Icons.bookmark,
                 color: Color(0xFF4E8AD9),
+                size: 24,
               ),
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('저장 취소'),
-                    content: Text('${place.name}을(를) 저장 목록에서 제거하시겠습니까?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('취소'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text('확인'),
-                      ),
-                    ],
-                  ),
-                );
-
-                if (confirm == true) {
-                  _unsavePlace(place.id);
-                }
-              },
-            ),
           ],
         ),
       ),

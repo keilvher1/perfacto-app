@@ -12,6 +12,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_page.dart';
 import 'my_page.dart';
+import 'review_write_new_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -57,13 +58,35 @@ class _HomePageState extends State<HomePage> {
   // 백엔드에서 장소 데이터 가져오기
   Future<void> _loadPlacesFromBackend() async {
     try {
-      // TODO: 모든 카테고리의 장소 가져오기
-      // 현재는 빈 리스트로 시작
+      // 모든 카테고리의 장소 가져오기
+      final List<PlaceModel> allPlaces = [];
+
+      // 카테고리 ID: 1=음식점, 2=숙박, 3=카페, 4=관광지
+      for (int categoryId = 1; categoryId <= 4; categoryId++) {
+        try {
+          final places = await ApiService.getPlaces(categoryId: categoryId, size: 100);
+          for (var placeData in places) {
+            allPlaces.add(PlaceModel.fromJson(placeData));
+          }
+        } catch (e) {
+          print('카테고리 $categoryId 로딩 실패: $e');
+        }
+      }
+
       setState(() {
-        _firestorePlaces = [];
+        _firestorePlaces = allPlaces;
+        _isLoading = false;
       });
+
+      // 마커 업데이트
+      _updateMarkers();
+
+      print('총 ${allPlaces.length}개의 장소 로드 완료');
     } catch (e) {
       print('장소 데이터 로딩 실패: $e');
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -71,11 +94,17 @@ class _HomePageState extends State<HomePage> {
   void _addFirestoreMarkers() async {
     final Set<Marker> newMarkers = {};
 
+    print('=== 마커 업데이트 시작 ===');
+    print('전체 장소 수: ${_firestorePlaces.length}');
+    print('선택된 카테고리: $_selectedCategories');
+
     for (var place in _firestorePlaces) {
       // 카테고리 필터링 (물고기 필터와 무관하게 적용)
       if (!_selectedCategories.contains(place.category)) {
+        print('필터링됨: ${place.name} (${place.category})');
         continue; // 선택되지 않은 카테고리는 스킵
       }
+      print('포함됨: ${place.name} (${place.category})');
 
       // 마커 아이콘 선택 로직
       BitmapDescriptor markerIcon;
@@ -89,7 +118,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       final marker = Marker(
-        markerId: MarkerId(place.id),
+        markerId: MarkerId(place.id.toString()),
         position: place.location,
         icon: markerIcon,
         onTap: () {
@@ -99,11 +128,14 @@ class _HomePageState extends State<HomePage> {
       newMarkers.add(marker);
     }
 
+    print('생성된 마커 수: ${newMarkers.length}');
+    print('=== 마커 업데이트 완료 ===');
+
     setState(() {
       // 기존 Firestore 마커 제거하고 새로운 마커 추가
       _markers.removeWhere(
         (marker) =>
-            _firestorePlaces.any((place) => place.id == marker.markerId.value),
+            _firestorePlaces.any((place) => place.id.toString() == marker.markerId.value),
       );
       _markers.addAll(newMarkers);
     });
@@ -241,9 +273,9 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
-    // 폴리곤 중심점 계산하여 등급 표시
-    final center = _calculatePolygonCenter(points);
-    _addGradeMarker(shortName, center, grade);
+    // 폴리곤 중심점 계산하여 등급 표시 (주석처리)
+    // final center = _calculatePolygonCenter(points);
+    // _addGradeMarker(shortName, center, grade);
   }
 
   void _addMultiPolygonFromCoordinates(
@@ -276,11 +308,11 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
-    // MultiPolygon의 전체 중심점 계산하여 등급 표시
-    if (allPoints.isNotEmpty) {
-      final center = _calculatePolygonCenter(allPoints);
-      _addGradeMarker(shortName, center, grade);
-    }
+    // MultiPolygon의 전체 중심점 계산하여 등급 표시 (주석처리)
+    // if (allPoints.isNotEmpty) {
+    //   final center = _calculatePolygonCenter(allPoints);
+    //   _addGradeMarker(shortName, center, grade);
+    // }
   }
 
   LatLng _calculatePolygonCenter(List<LatLng> points) {
@@ -656,8 +688,8 @@ class _HomePageState extends State<HomePage> {
                     // 카테고리 버튼
                     Positioned(
                       top: 100, // 24 + 52 + 24
-                      left: 0,
-                      right: 24,
+                      left: 24,
+                      right: 0,
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
@@ -669,13 +701,14 @@ class _HomePageState extends State<HomePage> {
                             _buildCategoryChip('가볼만한 곳', Icons.place),
                             const SizedBox(width: 10),
                             _buildCategoryChip('숙박', Icons.hotel),
+                            const SizedBox(width: 24), // 오른쪽 패딩
                           ],
                         ),
                       ),
                     ),
 
-                    // 좌측 하단 리뷰 청결도 카드
-                    Positioned(
+                    // 좌측 하단 리뷰 청결도 카드 (주석처리)
+                    /* Positioned(
                       left: 24,
                       bottom: 16,
                       child: Container(
@@ -748,7 +781,7 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                       ),
-                    ),
+                    ), */
 
                     // 우측 상단 필터 버튼 (colored_fish/uncolored_fish 토글)
                     Positioned(
@@ -855,9 +888,12 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       if (_selectedCategories.contains(categoryId)) {
         _selectedCategories.remove(categoryId);
+        print('카테고리 제거: $categoryId');
       } else {
         _selectedCategories.add(categoryId);
+        print('카테고리 추가: $categoryId');
       }
+      print('선택된 카테고리: $_selectedCategories');
     });
     _updateMarkers();
   }
@@ -962,10 +998,12 @@ class _BottomSheetContentForFirestoreState
   List<ReviewModel> _reviews = [];
   bool _isLoading = true;
   bool _isAddressExpanded = false;
+  late bool _isSaved; // Track local saved state
 
   @override
   void initState() {
     super.initState();
+    _isSaved = widget.place.isSaved; // Initialize from place data
     _tabController = TabController(length: 3, vsync: this);
     _loadReviews();
   }
@@ -994,6 +1032,47 @@ class _BottomSheetContentForFirestoreState
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // Toggle save/bookmark state
+  Future<void> _toggleSave() async {
+    try {
+      if (_isSaved) {
+        // Remove bookmark
+        await ApiService.removeBookmark(widget.place.id);
+      } else {
+        // Add bookmark
+        await ApiService.addBookmark(widget.place.id);
+      }
+
+      // Update local state
+      if (mounted) {
+        setState(() {
+          _isSaved = !_isSaved;
+        });
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _isSaved ? '저장되었습니다.' : '저장이 취소되었습니다.',
+            ),
+            duration: const Duration(seconds: 1),
+            backgroundColor: const Color(0xFF4E8AD9),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('오류가 발생했습니다: $e'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -1106,7 +1185,7 @@ class _BottomSheetContentForFirestoreState
                   //                       ),
                   //                       onPressed: () async {
                   //                         final shareText =
-                  //                             '${widget.place.name}\n${widget.place.address}\n평점: ${widget.place.rating}';
+                  //                             '${widget.place.name}\n${widget.place.address ?? ""}\n평점: ${widget.place.rating}';
                   //                         await Share.share(
                   //                           shareText,
                   //                           subject: widget.place.name,
@@ -1352,7 +1431,7 @@ class _BottomSheetContentForFirestoreState
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        widget.place.address,
+                                        widget.place.address ?? "",
                                         style: const TextStyle(
                                           color: Color(0xFF414141),
                                           fontSize: 17,
@@ -1435,7 +1514,7 @@ class _BottomSheetContentForFirestoreState
                                               ),
                                             ),
                                             Text(
-                                              widget.place.address,
+                                              widget.place.address ?? "",
                                               style: const TextStyle(
                                                 fontSize: 15,
                                                 color: Color(0xFF414141),
@@ -1445,7 +1524,7 @@ class _BottomSheetContentForFirestoreState
                                               onPressed: () {
                                                 Clipboard.setData(
                                                   ClipboardData(
-                                                    text: widget.place.address,
+                                                    text: widget.place.address ?? "",
                                                   ),
                                                 );
                                                 ScaffoldMessenger.of(
@@ -1514,7 +1593,7 @@ class _BottomSheetContentForFirestoreState
                                               ),
                                             ),
                                             Text(
-                                              widget.place.address,
+                                              widget.place.address ?? "",
                                               style: const TextStyle(
                                                 fontSize: 15,
                                                 color: Color(0xFF414141),
@@ -1524,7 +1603,7 @@ class _BottomSheetContentForFirestoreState
                                               onPressed: () {
                                                 Clipboard.setData(
                                                   ClipboardData(
-                                                    text: widget.place.address,
+                                                    text: widget.place.address ?? "",
                                                   ),
                                                 );
                                                 ScaffoldMessenger.of(
@@ -1804,7 +1883,7 @@ class _BottomSheetContentForFirestoreState
                               GestureDetector(
                                 onTap: () async {
                                   final shareText =
-                                      '${widget.place.name}\n${widget.place.address}\n평점: ${widget.place.rating}';
+                                      '${widget.place.name}\n${widget.place.address ?? ""}\n평점: ${widget.place.rating}';
                                   await Share.share(
                                     shareText,
                                     subject: widget.place.name,
@@ -1849,20 +1928,35 @@ class _BottomSheetContentForFirestoreState
                               // 저장 버튼
                               GestureDetector(
                                 onTap: () async {
-                                  // TODO: 백엔드 API로 북마크 추가/제거
-                                  final success = false;
-
-                                  if (success && mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          widget.place.isSaved
-                                              ? '저장이 취소되었습니다.'
-                                              : '저장되었습니다.',
+                                  try {
+                                    // Check if user is logged in
+                                    final isLoggedIn = await AuthService.isLoggedIn();
+                                    if (!isLoggedIn) {
+                                      // Show login page if not logged in
+                                      final result = await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => const LoginPage(),
                                         ),
-                                        duration: const Duration(seconds: 1),
-                                      ),
-                                    );
+                                      );
+                                      // If login successful, try saving again
+                                      if (result == true && mounted) {
+                                        _toggleSave();
+                                      }
+                                      return;
+                                    }
+
+                                    // Toggle save state
+                                    _toggleSave();
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('오류가 발생했습니다: $e'),
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
                                   }
                                 },
                                 child: Container(
@@ -1871,10 +1965,14 @@ class _BottomSheetContentForFirestoreState
                                     vertical: 12,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
+                                    color: _isSaved
+                                        ? const Color(0xFF4E8AD9).withOpacity(0.1)
+                                        : Colors.white,
                                     borderRadius: BorderRadius.circular(25),
                                     border: Border.all(
-                                      color: const Color(0xFFCFCDC8),
+                                      color: _isSaved
+                                          ? const Color(0xFF4E8AD9)
+                                          : const Color(0xFFCFCDC8),
                                       width: 1,
                                     ),
                                   ),
@@ -1882,15 +1980,19 @@ class _BottomSheetContentForFirestoreState
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Image.asset(
-                                        'assets/icons/fish.png',
+                                        _isSaved
+                                            ? 'assets/icons/colored_fish.png'
+                                            : 'assets/icons/fish.png',
                                         width: 26,
                                         height: 26,
                                       ),
                                       const SizedBox(width: 6),
-                                      const Text(
-                                        '저장',
+                                      Text(
+                                        _isSaved ? '저장됨' : '저장',
                                         style: TextStyle(
-                                          color: Color(0xFF414141),
+                                          color: _isSaved
+                                              ? const Color(0xFF4E8AD9)
+                                              : const Color(0xFF414141),
                                           fontSize: 15,
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -1919,15 +2021,25 @@ class _BottomSheetContentForFirestoreState
                                       // 로그인 성공 시 리뷰 작성 페이지로 이동
                                       if (result == true && mounted) {
                                         Navigator.pop(context);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('리뷰 작성 기능은 준비 중입니다')),
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => ReviewWriteNewPage(
+                                              place: widget.place,
+                                            ),
+                                          ),
                                         );
                                       }
                                     } else {
                                       // 이미 로그인된 경우
                                       Navigator.pop(context);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('리뷰 작성 기능은 준비 중입니다')),
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => ReviewWriteNewPage(
+                                            place: widget.place,
+                                          ),
+                                        ),
                                       );
                                     }
                                   },
@@ -1996,7 +2108,7 @@ class _BottomSheetContentForFirestoreState
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '위치: ${widget.place.address}',
+                    '위치: ${widget.place.address ?? ""}',
                     style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF414141),
@@ -2254,7 +2366,7 @@ class _BottomSheetContentForFirestoreState
 
           // 리뷰 텍스트
           Text(
-            review.comment,
+            review.comment ?? "",
             style: const TextStyle(
               fontSize: 12,
               color: Color(0xFF1B1B1B),
@@ -2306,7 +2418,7 @@ class _BottomSheetContentForFirestoreState
           ),
           const SizedBox(height: 8),
           Text(
-            '위치: ${widget.place.address}',
+            '위치: ${widget.place.address ?? ""}',
             style: const TextStyle(fontSize: 14, color: Color(0xFF414141)),
           ),
         ],

@@ -20,6 +20,8 @@ class _MyPageState extends State<MyPage> {
   int _reviewCount = 0;
   int _savedPlacesCount = 0;
   bool _isLoading = true;
+  String _userName = '사용자';
+  String _userEmail = 'user@example.com';
 
   @override
   void initState() {
@@ -39,27 +41,74 @@ class _MyPageState extends State<MyPage> {
 
     if (isLoggedIn) {
       try {
-        // TODO: 실제 사용자 ID를 가져와야 함 (임시로 1 사용)
-        final userId = 1; // AuthService에서 가져와야 함
+        // 실제 사용자 ID 가져오기
+        final userIdStr = AuthService.currentUserId;
+        final userEmail = AuthService.currentUserEmail;
 
-        // 팔로잉/팔로워 수
-        final following = await ApiService.getFollowing(userId);
-        final followers = await ApiService.getFollowers(userId);
+        print('🔍 DEBUG - userIdStr: $userIdStr, userEmail: $userEmail');
 
-        // 내 리뷰 수
-        final reviews = await ApiService.getUserReviews(userId);
+        if (userIdStr == null) {
+          throw Exception('사용자 ID를 찾을 수 없습니다');
+        }
 
-        // 저장된 장소 수
-        final savedPlaces = await ApiService.getSavedPlaces();
+        final userId = int.parse(userIdStr);
+
+        // 사용자 프로필 정보 가져오기 (최우선)
+        final userProfile = await ApiService.getUserById(userId);
+        print('🔍 DEBUG - userProfile: $userProfile');
+
+        // 기본 사용자 정보 먼저 설정
+        final profileEmail = userProfile['email'];
+        final authEmail = userEmail;
+
+        print('🔍 DEBUG - profileEmail from API: $profileEmail');
+        print('🔍 DEBUG - authEmail from AuthService: $authEmail');
 
         setState(() {
-          _followingCount = following.length;
-          _followerCount = followers.length;
-          _reviewCount = reviews.length;
-          _savedPlacesCount = savedPlaces.length;
+          _userProfile = userProfile;
+          _userName = userProfile['nickName'] ?? userProfile['name'] ?? '사용자';
+          // userProfile에서 가져온 email을 최우선으로 사용
+          _userEmail = profileEmail ?? authEmail ?? 'user@example.com';
+        });
+
+        print('🔍 DEBUG - Final userName: $_userName, userEmail: $_userEmail');
+
+        // 나머지 정보는 개별 try-catch로 처리 (하나 실패해도 계속 진행)
+        try {
+          final following = await ApiService.getFollowing(userId);
+          final followers = await ApiService.getFollowers(userId);
+          setState(() {
+            _followingCount = following.length;
+            _followerCount = followers.length;
+          });
+        } catch (e) {
+          print('⚠️ 팔로우 정보 로딩 실패: $e');
+        }
+
+        try {
+          final reviews = await ApiService.getUserReviews(userId);
+          setState(() {
+            _reviewCount = reviews.length;
+          });
+        } catch (e) {
+          print('⚠️ 리뷰 정보 로딩 실패: $e');
+        }
+
+        try {
+          final savedPlaces = await ApiService.getSavedPlaces();
+          setState(() {
+            _savedPlacesCount = savedPlaces.length;
+          });
+        } catch (e) {
+          print('⚠️ 저장된 장소 정보 로딩 실패: $e');
+        }
+
+        setState(() {
           _isLoading = false;
         });
+
       } catch (e) {
+        print('❌ 사용자 데이터 로딩 실패: $e');
         setState(() {
           _isLoading = false;
         });
@@ -76,6 +125,8 @@ class _MyPageState extends State<MyPage> {
     setState(() {
       _isLoggedIn = false;
       _userProfile = null;
+      _userName = '사용자';
+      _userEmail = 'user@example.com';
       _followingCount = 0;
       _followerCount = 0;
       _reviewCount = 0;
@@ -156,28 +207,49 @@ class _MyPageState extends State<MyPage> {
           CircleAvatar(
             radius: 50,
             backgroundColor: const Color(0xFFD9D9D9),
-            child: const Icon(
-              Icons.person,
-              size: 50,
-              color: Colors.white,
-            ),
+            backgroundImage: _userProfile?['profileImageUrl'] != null
+                ? NetworkImage(_userProfile!['profileImageUrl'])
+                : null,
+            child: _userProfile?['profileImageUrl'] == null
+                ? const Icon(
+                    Icons.person,
+                    size: 50,
+                    color: Colors.white,
+                  )
+                : null,
           ),
           const SizedBox(height: 16),
 
-          // 사용자 이름 (TODO: 실제 데이터)
-          const Text(
-            '사용자',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-            ),
+          // 사용자 이름 + 편집 버튼
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                _userName,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(
+                  Icons.edit,
+                  size: 20,
+                  color: Color(0xFF4E8AD9),
+                ),
+                onPressed: _showEditNicknameDialog,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
 
-          // 이메일 (TODO: 실제 데이터)
-          const Text(
-            'user@example.com',
-            style: TextStyle(
+          // 이메일
+          Text(
+            _userEmail,
+            style: const TextStyle(
               fontSize: 14,
               color: Color(0xFF8D8D8D),
             ),
@@ -185,6 +257,71 @@ class _MyPageState extends State<MyPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _showEditNicknameDialog() async {
+    final TextEditingController controller = TextEditingController(text: _userName);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('닉네임 변경'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: '새로운 닉네임을 입력하세요',
+              border: OutlineInputBorder(),
+            ),
+            maxLength: 20,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('취소'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context, controller.text);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4E8AD9),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('변경'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result.trim().isNotEmpty && result != _userName) {
+      try {
+        print('🔍 DEBUG - Updating nickname to: ${result.trim()}');
+        await ApiService.updateUserProfile(nickname: result.trim());
+        print('✅ DEBUG - Nickname update successful');
+
+        setState(() {
+          _userName = result.trim();
+          if (_userProfile != null) {
+            _userProfile!['nickName'] = result.trim();
+          }
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('닉네임이 변경되었습니다')),
+          );
+        }
+      } catch (e) {
+        print('❌ DEBUG - Nickname update failed: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('닉네임 변경 실패: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildStatsSection() {
@@ -209,16 +346,19 @@ class _MyPageState extends State<MyPage> {
             label: '팔로잉',
             value: '$_followingCount',
             onTap: () {
-              // TODO: 실제 사용자 ID
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => FollowListPage(
-                    userId: 1,
-                    initialTabIndex: 0,
+              final userIdStr = AuthService.currentUserId;
+              if (userIdStr != null) {
+                final userId = int.parse(userIdStr);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => FollowListPage(
+                      userId: userId,
+                      initialTabIndex: 0,
+                    ),
                   ),
-                ),
-              );
+                );
+              }
             },
           ),
           Container(
@@ -230,16 +370,19 @@ class _MyPageState extends State<MyPage> {
             label: '팔로워',
             value: '$_followerCount',
             onTap: () {
-              // TODO: 실제 사용자 ID
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => FollowListPage(
-                    userId: 1,
-                    initialTabIndex: 1,
+              final userIdStr = AuthService.currentUserId;
+              if (userIdStr != null) {
+                final userId = int.parse(userIdStr);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => FollowListPage(
+                      userId: userId,
+                      initialTabIndex: 1,
+                    ),
                   ),
-                ),
-              );
+                );
+              }
             },
           ),
           Container(

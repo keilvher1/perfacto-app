@@ -382,12 +382,12 @@ class _RankingPageState extends State<RankingPage> {
             ),
           ),
 
-          // ELO 점수 (rating을 ELO로 표시 - 실제로는 eloRating 필드를 사용해야 함)
+          // ELO 점수
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${(place.rating * 200 + 800).toInt()}', // 임시로 rating을 ELO 범위로 변환
+                '${place.eloRating ?? 1200}',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,

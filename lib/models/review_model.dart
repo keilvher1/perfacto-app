@@ -50,6 +50,11 @@ class ReviewModel {
   final String? comparedPlaceId; // 3단계: 비교 장소 ID
   final String? comparedPlaceName; // 비교 장소 이름
   final ComparisonResult? comparison; // 비교 결과
+  final ComparisonResult? comparisonResult; // 별칭 (호환성)
+
+  // 추가 필드 (기존 코드 호환성)
+  final List<String> imageUrls;
+  final String? comment;
 
   final int likeCount;
   final bool isLikedByMe;
@@ -67,10 +72,13 @@ class ReviewModel {
     this.comparedPlaceId,
     this.comparedPlaceName,
     this.comparison,
+    ComparisonResult? comparisonResult,
+    this.imageUrls = const [],
+    this.comment,
     required this.likeCount,
     required this.isLikedByMe,
     required this.createdAt,
-  });
+  }) : comparisonResult = comparisonResult ?? comparison;
 
   factory ReviewModel.fromJson(Map<String, dynamic> json) {
     return ReviewModel(
@@ -92,6 +100,13 @@ class ReviewModel {
       comparison: json['comparison'] != null
           ? _parseComparison(json['comparison'])
           : null,
+      comparisonResult: json['comparisonResult'] != null
+          ? _parseComparison(json['comparisonResult'])
+          : null,
+      imageUrls: json['imageUrls'] != null
+          ? List<String>.from(json['imageUrls'])
+          : [],
+      comment: json['comment'],
       likeCount: json['likeCount'] ?? 0,
       isLikedByMe: json['isLikedByMe'] ?? false,
       createdAt: DateTime.parse(json['createdAt']),

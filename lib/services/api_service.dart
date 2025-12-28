@@ -3,8 +3,8 @@ import 'package:http/http.dart' as http;
 
 /// Perfacto 백엔드 API 서비스
 class ApiService {
-  // EC2 서버 주소 (추후 도메인으로 변경 가능)
-  static const String baseUrl = 'http://16.184.51.245';
+  // 배포된 EC2 서버 주소
+  static const String baseUrl = 'http://16.184.51.245:8080';
 
   // 인증 토큰 저장 (로그인 후 설정)
   static String? _accessToken;
@@ -127,6 +127,26 @@ class ApiService {
     }
   }
 
+  /// PATCH 요청 (인증 필요)
+  static Future<Map<String, dynamic>> patch(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final url = Uri.parse('$baseUrl$path');
+
+    try {
+      final response = await http.patch(
+        url,
+        headers: _getHeaders(includeAuth: true),
+        body: jsonEncode(body),
+      );
+
+      return _handleResponse(response);
+    } catch (e) {
+      throw Exception('네트워크 오류: $e');
+    }
+  }
+
   /// DELETE 요청 (인증 필요)
   static Future<Map<String, dynamic>> delete(String path) async {
     final url = Uri.parse('$baseUrl$path');
@@ -145,12 +165,16 @@ class ApiService {
 
   /// 응답 처리
   static Map<String, dynamic> _handleResponse(http.Response response) {
+    print('🔍 DEBUG - Response Status Code: ${response.statusCode}');
+    print('🔍 DEBUG - Response Body: ${response.body}');
+
     final body = jsonDecode(utf8.decode(response.bodyBytes));
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return body;
     } else {
       final message = body['message'] ?? '알 수 없는 오류가 발생했습니다.';
+      print('❌ DEBUG - Error Message: $message');
       throw Exception(message);
     }
   }
@@ -193,7 +217,7 @@ class ApiService {
     String? district,
     int limit = 50,
   }) async {
-    String path = '/perfacto/api/places/ranking?limit=$limit';
+    String path = '/perfacto/every/places/ranking?limit=$limit';
 
     if (categoryId != null) {
       path += '&categoryId=$categoryId';
@@ -341,7 +365,8 @@ class ApiService {
 
   /// 장소 저장
   static Future<void> savePlace(int placeId, {String? memo}) async {
-    await postAuth('/perfacto/api/saved-places/$placeId', {
+    await postAuth('/perfacto/api/saved-places', {
+      'placeId': placeId,
       if (memo != null) 'memo': memo,
     });
   }
@@ -353,14 +378,23 @@ class ApiService {
 
   /// 저장된 장소 목록 조회
   static Future<List<dynamic>> getSavedPlaces() async {
-    final response = await getAuth('/perfacto/api/saved-places');
-    return response['data'] as List<dynamic>;
+    print('🔍 DEBUG - getSavedPlaces called');
+    print('🔍 DEBUG - Access Token: ${_accessToken != null ? "EXISTS" : "NULL"}');
+
+    try {
+      final response = await getAuth('/perfacto/api/saved-places');
+      print('🔍 DEBUG - getSavedPlaces response: $response');
+      return response['data'] as List<dynamic>;
+    } catch (e) {
+      print('❌ DEBUG - getSavedPlaces error: $e');
+      rethrow;
+    }
   }
 
   /// 장소 저장 여부 확인
   static Future<bool> isSaved(int placeId) async {
-    final response = await getAuth('/perfacto/api/saved-places/$placeId/status');
-    return response['data']['isSaved'] as bool;
+    final response = await getAuth('/perfacto/api/saved-places/check/$placeId');
+    return response['data'] as bool;
   }
 
   /// 회원가입
@@ -428,12 +462,21 @@ class ApiService {
 
   /// 특정 사용자의 저장한 장소 + 리뷰 남긴 장소 조회
   static Future<List<Map<String, dynamic>>> getUserPlaces(int userId) async {
-    final response = await get('/api/saved-places/user/$userId');
+    final response = await get('/perfacto/api/saved-places/user/$userId');
 
     if (response['data'] != null && response['data'] is List) {
       return List<Map<String, dynamic>>.from(response['data']);
     }
 
     return [];
+  }
+
+  // ==================== 프로필 업데이트 API ====================
+
+  /// 사용자 프로필 업데이트 (닉네임)
+  static Future<void> updateUserProfile({required String nickname}) async {
+    await patch('/perfacto/api/user/profile', {
+      'nickName': nickname,
+    });
   }
 }
