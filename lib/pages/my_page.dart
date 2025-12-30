@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:perfacto/services/auth_service.dart';
 import 'package:perfacto/services/api_service.dart';
+import 'package:perfacto/services/saved_places_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
+import 'dart:io';
 import 'login_page.dart';
 import 'follow_list_page.dart';
 import 'saved_places_page.dart';
+import 'my_reviews_page.dart';
+import 'settings_page.dart';
 
 class MyPage extends StatefulWidget {
   const MyPage({super.key});
@@ -96,11 +102,32 @@ class _MyPageState extends State<MyPage> {
 
         try {
           final savedPlaces = await ApiService.getSavedPlaces();
-          setState(() {
-            _savedPlacesCount = savedPlaces.length;
-          });
+
+          // API가 빈 배열을 반환하면 로컬 저장소 사용
+          if (savedPlaces.isEmpty) {
+            print('⚠️ API에서 저장된 장소가 없음. 로컬 저장소 확인 중...');
+            final savedPlaceIds = await SavedPlacesService.getSavedPlaceIds();
+            setState(() {
+              _savedPlacesCount = savedPlaceIds.length;
+            });
+            print('✅ 로컬 저장소에서 ${savedPlaceIds.length}개 장소 카운트 로드');
+          } else {
+            setState(() {
+              _savedPlacesCount = savedPlaces.length;
+            });
+          }
         } catch (e) {
           print('⚠️ 저장된 장소 정보 로딩 실패: $e');
+          // API 실패 시 로컬 저장소에서 카운트 가져오기
+          try {
+            final savedPlaceIds = await SavedPlacesService.getSavedPlaceIds();
+            setState(() {
+              _savedPlacesCount = savedPlaceIds.length;
+            });
+            print('✅ 로컬 저장소에서 ${savedPlaceIds.length}개 장소 카운트 로드');
+          } catch (localError) {
+            print('❌ 로컬 저장소에서도 로딩 실패: $localError');
+          }
         }
 
         setState(() {
@@ -160,11 +187,17 @@ class _MyPageState extends State<MyPage> {
           if (_isLoggedIn)
             IconButton(
               icon: const Icon(Icons.settings),
-              onPressed: () {
-                // TODO: 설정 페이지로 이동
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('설정 기능은 준비 중입니다')),
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SettingsPage(),
+                  ),
                 );
+                if (result == true) {
+                  // 계정 삭제 등으로 로그아웃된 경우
+                  _loadData();
+                }
               },
             ),
         ],
@@ -204,19 +237,46 @@ class _MyPageState extends State<MyPage> {
       child: Column(
         children: [
           // 프로필 이미지
-          CircleAvatar(
-            radius: 50,
-            backgroundColor: const Color(0xFFD9D9D9),
-            backgroundImage: _userProfile?['profileImageUrl'] != null
-                ? NetworkImage(_userProfile!['profileImageUrl'])
-                : null,
-            child: _userProfile?['profileImageUrl'] == null
-                ? const Icon(
-                    Icons.person,
-                    size: 50,
-                    color: Colors.white,
-                  )
-                : null,
+          GestureDetector(
+            onTap: _showProfileImageOptions,
+            child: Stack(
+              children: [
+                CircleAvatar(
+                  radius: 50,
+                  backgroundColor: const Color(0xFFD9D9D9),
+                  backgroundImage: _userProfile?['profileImageUrl'] != null
+                      ? NetworkImage(_userProfile!['profileImageUrl'])
+                      : null,
+                  child: _userProfile?['profileImageUrl'] == null
+                      ? const Icon(
+                          Icons.person,
+                          size: 50,
+                          color: Colors.white,
+                        )
+                      : null,
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4E8AD9),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
 
@@ -257,6 +317,156 @@ class _MyPageState extends State<MyPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _showProfileImageOptions() async {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF4E8AD9)),
+              title: const Text('갤러리에서 선택'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickProfileImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF4E8AD9)),
+              title: const Text('카메라로 촬영'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickProfileImage(ImageSource.camera);
+              },
+            ),
+            if (_userProfile?['profileImageUrl'] != null)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('프로필 사진 삭제'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteProfileImage();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickProfileImage(ImageSource source) async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: source,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+
+      if (image == null) return;
+
+      // 로딩 표시
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(color: Color(0xFF4E8AD9)),
+          ),
+        );
+      }
+
+      // 이미지를 Base64로 변환
+      final File imageFile = File(image.path);
+      final bytes = await imageFile.readAsBytes();
+      final base64Image = base64Encode(bytes);
+
+      // 서버에 업로드
+      final imageUrl = await ApiService.uploadImage(base64Image);
+
+      // 프로필 업데이트
+      await ApiService.updateUserProfile(profileImageUrl: imageUrl);
+
+      // 로컬 상태 업데이트
+      setState(() {
+        if (_userProfile != null) {
+          _userProfile!['profileImageUrl'] = imageUrl;
+        }
+      });
+
+      // 로딩 다이얼로그 닫기
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('프로필 사진이 변경되었습니다')),
+        );
+      }
+    } catch (e) {
+      print('❌ 프로필 이미지 업로드 실패: $e');
+
+      // 로딩 다이얼로그 닫기 (열려있다면)
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('프로필 사진 변경 실패: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteProfileImage() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('프로필 사진 삭제'),
+        content: const Text('프로필 사진을 삭제하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await ApiService.updateUserProfile(profileImageUrl: '');
+
+        setState(() {
+          if (_userProfile != null) {
+            _userProfile!['profileImageUrl'] = null;
+          }
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('프로필 사진이 삭제되었습니다')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('프로필 사진 삭제 실패: $e')),
+          );
+        }
+      }
+    }
   }
 
   Future<void> _showEditNicknameDialog() async {
@@ -394,10 +604,12 @@ class _MyPageState extends State<MyPage> {
             label: '리뷰',
             value: '$_reviewCount',
             onTap: () {
-              // TODO: 내 리뷰 페이지로 이동
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('내 리뷰 페이지는 준비 중입니다')),
-              );
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MyReviewsPage(),
+                ),
+              ).then((_) => _loadData()); // 돌아올 때 데이터 새로고침
             },
           ),
         ],
@@ -470,10 +682,12 @@ class _MyPageState extends State<MyPage> {
             title: '내가 쓴 리뷰',
             subtitle: '$_reviewCount개',
             onTap: () {
-              // TODO: 내 리뷰 페이지로 이동
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('내 리뷰 페이지는 준비 중입니다')),
-              );
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MyReviewsPage(),
+                ),
+              ).then((_) => _loadData()); // 돌아올 때 데이터 새로고침
             },
           ),
           const Divider(height: 1),

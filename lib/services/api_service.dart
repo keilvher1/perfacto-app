@@ -1,14 +1,28 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 
 /// Perfacto 백엔드 API 서비스
 class ApiService {
   // 배포된 EC2 서버 주소
-  static const String baseUrl = 'http://16.184.51.245:8080';
+  static const String baseUrl = 'http://3.38.160.198:8080';
+
+  // 타임아웃 설정 (서버 다운 시 빠른 실패를 위해 10초로 단축)
+  static const Duration requestTimeout = Duration(seconds: 10);
+
+  // 재시도 설정
+  static const int maxRetries = 2; // 최대 재시도 횟수
+  static const Duration retryDelay = Duration(seconds: 1); // 재시도 간격
 
   // 인증 토큰 저장 (로그인 후 설정)
   static String? _accessToken;
   static String? _refreshToken;
+
+  // 서버 상태
+  static bool _isServerDown = false;
+
+  /// 서버 다운 상태 확인
+  static bool get isServerDown => _isServerDown;
 
   /// 토큰 설정
   static void setTokens({String? accessToken, String? refreshToken}) {
@@ -35,36 +49,118 @@ class ApiService {
     return headers;
   }
 
-  /// GET 요청 (인증 불필요)
-  static Future<Map<String, dynamic>> get(String path) async {
-    final url = Uri.parse('$baseUrl$path');
-
+  /// 서버 상태 확인
+  static Future<bool> checkServerStatus() async {
     try {
       final response = await http.get(
-        url,
+        Uri.parse('$baseUrl/perfacto/every/categories'),
         headers: _getHeaders(),
-      );
+      ).timeout(const Duration(seconds: 5));
 
-      return _handleResponse(response);
+      _isServerDown = response.statusCode != 200;
+      return !_isServerDown;
     } catch (e) {
-      throw Exception('네트워크 오류: $e');
+      _isServerDown = true;
+      return false;
     }
+  }
+
+  /// 재시도 로직이 포함된 HTTP 요청 wrapper
+  static Future<T> _retryRequest<T>(
+    Future<T> Function() request, {
+    int maxAttempts = maxRetries,
+  }) async {
+    int attempt = 0;
+    Exception? lastException;
+
+    while (attempt < maxAttempts) {
+      try {
+        return await request();
+      } on SocketException catch (e) {
+        lastException = Exception('서버에 연결할 수 없습니다. 네트워크 연결을 확인해주세요.');
+        print('❌ DEBUG - SocketException (attempt ${attempt + 1}/$maxAttempts): $e');
+      } on HttpException catch (e) {
+        lastException = Exception('서버 오류가 발생했습니다: $e');
+        print('❌ DEBUG - HttpException (attempt ${attempt + 1}/$maxAttempts): $e');
+      } on FormatException catch (e) {
+        lastException = Exception('잘못된 응답 형식입니다: $e');
+        print('❌ DEBUG - FormatException (attempt ${attempt + 1}/$maxAttempts): $e');
+        break; // 재시도 불필요
+      } catch (e) {
+        lastException = e as Exception;
+        print('❌ DEBUG - Exception (attempt ${attempt + 1}/$maxAttempts): $e');
+      }
+
+      attempt++;
+      if (attempt < maxAttempts) {
+        print('⏳ DEBUG - ${retryDelay.inSeconds}초 후 재시도...');
+        await Future.delayed(retryDelay);
+      }
+    }
+
+    _isServerDown = true;
+    throw lastException ?? Exception('서버 요청 실패');
+  }
+
+  /// GET 요청 (인증 불필요)
+  static Future<Map<String, dynamic>> get(String path) async {
+    return await _retryRequest(() async {
+      final url = Uri.parse('$baseUrl$path');
+
+      try {
+        final response = await http.get(
+          url,
+          headers: _getHeaders(),
+        ).timeout(
+          requestTimeout,
+          onTimeout: () {
+            throw SocketException('서버 응답 시간 초과 (${requestTimeout.inSeconds}초)');
+          },
+        );
+
+        _isServerDown = false; // 성공 시 서버 정상 상태로 업데이트
+        return _handleResponse(response);
+      } on SocketException catch (e) {
+        print('❌ DEBUG - GET $path - SocketException: $e');
+        _isServerDown = true;
+        rethrow;
+      } on HttpException catch (e) {
+        print('❌ DEBUG - GET $path - HttpException: $e');
+        rethrow;
+      } catch (e) {
+        print('❌ DEBUG - GET $path - Error: $e');
+        rethrow;
+      }
+    });
   }
 
   /// GET 요청 (인증 필요)
   static Future<Map<String, dynamic>> getAuth(String path) async {
-    final url = Uri.parse('$baseUrl$path');
+    return await _retryRequest(() async {
+      final url = Uri.parse('$baseUrl$path');
 
-    try {
-      final response = await http.get(
-        url,
-        headers: _getHeaders(includeAuth: true),
-      );
+      try {
+        final response = await http.get(
+          url,
+          headers: _getHeaders(includeAuth: true),
+        ).timeout(
+          requestTimeout,
+          onTimeout: () {
+            throw SocketException('서버 응답 시간 초과 (${requestTimeout.inSeconds}초)');
+          },
+        );
 
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('네트워크 오류: $e');
-    }
+        _isServerDown = false;
+        return _handleResponse(response);
+      } on SocketException catch (e) {
+        print('❌ DEBUG - GET AUTH $path - SocketException: $e');
+        _isServerDown = true;
+        rethrow;
+      } catch (e) {
+        print('❌ DEBUG - GET AUTH $path - Error: $e');
+        rethrow;
+      }
+    });
   }
 
   /// POST 요청 (인증 불필요)
@@ -72,19 +168,32 @@ class ApiService {
     String path,
     Map<String, dynamic> body,
   ) async {
-    final url = Uri.parse('$baseUrl$path');
+    return await _retryRequest(() async {
+      final url = Uri.parse('$baseUrl$path');
 
-    try {
-      final response = await http.post(
-        url,
-        headers: _getHeaders(),
-        body: jsonEncode(body),
-      );
+      try {
+        final response = await http.post(
+          url,
+          headers: _getHeaders(),
+          body: jsonEncode(body),
+        ).timeout(
+          requestTimeout,
+          onTimeout: () {
+            throw SocketException('서버 응답 시간 초과 (${requestTimeout.inSeconds}초)');
+          },
+        );
 
-      return _handleResponse(response);
-    } catch (e) {
-      throw Exception('네트워크 오류: $e');
-    }
+        _isServerDown = false;
+        return _handleResponse(response);
+      } on SocketException catch (e) {
+        print('❌ DEBUG - POST $path - SocketException: $e');
+        _isServerDown = true;
+        rethrow;
+      } catch (e) {
+        print('❌ DEBUG - POST $path - Error: $e');
+        rethrow;
+      }
+    });
   }
 
   /// POST 요청 (인증 필요)
@@ -173,8 +282,14 @@ class ApiService {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return body;
     } else {
-      final message = body['message'] ?? '알 수 없는 오류가 발생했습니다.';
+      final message = body['message'] ?? body['error'] ?? '알 수 없는 오류가 발생했습니다.';
       print('❌ DEBUG - Error Message: $message');
+
+      // 404 에러인 경우 특별 처리를 위해 상태 코드 포함
+      if (response.statusCode == 404) {
+        throw Exception('404_NOT_FOUND: $message');
+      }
+
       throw Exception(message);
     }
   }
@@ -193,10 +308,18 @@ class ApiService {
     int page = 0,
     int size = 20,
   }) async {
+    print('🔍 DEBUG - getPlaces called: categoryId=$categoryId, page=$page, size=$size');
+
     final response = await get(
       '/perfacto/every/places/category/$categoryId?page=$page&size=$size',
     );
-    return response['data']['content'] as List<dynamic>;
+
+    print('🔍 DEBUG - getPlaces response keys: ${response.keys}');
+
+    final content = response['data']['content'] as List<dynamic>;
+    print('🔍 DEBUG - getPlaces returning ${content.length} places');
+
+    return content;
   }
 
   /// 장소 상세 조회
@@ -311,7 +434,13 @@ class ApiService {
   /// 장소의 전체 리뷰 목록 조회
   static Future<List<dynamic>> getReviews(int placeId, {int page = 0, int size = 20}) async {
     final response = await get('/perfacto/every/reviews/place/$placeId?page=$page&size=$size');
-    return response['data']['content'] as List<dynamic>;
+
+    // data가 리스트인 경우와 pagination 객체인 경우 모두 처리
+    if (response['data'] is List) {
+      return response['data'] as List<dynamic>;
+    } else {
+      return response['data']['content'] as List<dynamic>;
+    }
   }
 
   /// 팔로잉 사용자의 리뷰 목록 조회
@@ -323,7 +452,13 @@ class ApiService {
   /// 사용자의 리뷰 목록 조회
   static Future<List<dynamic>> getUserReviews(int userId, {int page = 0, int size = 20}) async {
     final response = await get('/perfacto/every/reviews/user/$userId?page=$page&size=$size');
-    return response['data']['content'] as List<dynamic>;
+
+    // data가 리스트인 경우와 pagination 객체인 경우 모두 처리
+    if (response['data'] is List) {
+      return response['data'] as List<dynamic>;
+    } else {
+      return response['data']['content'] as List<dynamic>;
+    }
   }
 
   /// 리뷰에 도움이 됨 추가
@@ -365,15 +500,43 @@ class ApiService {
 
   /// 장소 저장
   static Future<void> savePlace(int placeId, {String? memo}) async {
-    await postAuth('/perfacto/api/saved-places', {
-      'placeId': placeId,
-      if (memo != null) 'memo': memo,
-    });
+    try {
+      await postAuth('/perfacto/api/saved-places', {
+        'placeId': placeId,
+        if (memo != null) 'memo': memo,
+      });
+      print('✅ DEBUG - 장소 저장 성공: placeId=$placeId');
+    } catch (e) {
+      print('❌ DEBUG - savePlace error: $e');
+
+      // 404 에러인 경우 사용자에게 알림
+      if (e.toString().contains('404_NOT_FOUND') ||
+          e.toString().contains('404') ||
+          e.toString().contains('Not Found')) {
+        throw Exception('저장 기능이 아직 준비 중입니다. 곧 이용하실 수 있습니다.');
+      }
+
+      rethrow;
+    }
   }
 
   /// 장소 저장 취소
   static Future<void> unsavePlace(int placeId) async {
-    await delete('/perfacto/api/saved-places/$placeId');
+    try {
+      await delete('/perfacto/api/saved-places/$placeId');
+      print('✅ DEBUG - 장소 저장 취소 성공: placeId=$placeId');
+    } catch (e) {
+      print('❌ DEBUG - unsavePlace error: $e');
+
+      // 404 에러인 경우 사용자에게 알림
+      if (e.toString().contains('404_NOT_FOUND') ||
+          e.toString().contains('404') ||
+          e.toString().contains('Not Found')) {
+        throw Exception('저장 취소 기능이 아직 준비 중입니다.');
+      }
+
+      rethrow;
+    }
   }
 
   /// 저장된 장소 목록 조회
@@ -387,14 +550,42 @@ class ApiService {
       return response['data'] as List<dynamic>;
     } catch (e) {
       print('❌ DEBUG - getSavedPlaces error: $e');
+
+      // FormatException: 백엔드 순환 참조 문제 (JSON 파싱 실패)
+      if (e.toString().contains('FormatException') ||
+          e.toString().contains('Unexpected character')) {
+        print('⚠️ DEBUG - 백엔드 응답 형식 오류 (순환 참조). 빈 배열 반환');
+        return [];
+      }
+
+      // 404 에러인 경우 빈 배열 반환 (백엔드 API 미구현)
+      if (e.toString().contains('404_NOT_FOUND') ||
+          e.toString().contains('404') ||
+          e.toString().contains('Not Found')) {
+        print('⚠️ DEBUG - 저장된 장소 API가 아직 구현되지 않았습니다. 빈 배열 반환');
+        return [];
+      }
+
+      // 기타 에러는 사용자에게 표시
       rethrow;
     }
   }
 
   /// 장소 저장 여부 확인
   static Future<bool> isSaved(int placeId) async {
-    final response = await getAuth('/perfacto/api/saved-places/check/$placeId');
-    return response['data'] as bool;
+    try {
+      final response = await getAuth('/perfacto/api/saved-places/check/$placeId');
+      return response['data'] as bool;
+    } catch (e) {
+      // 404 에러인 경우 false 반환 (백엔드 API 미구현)
+      if (e.toString().contains('404_NOT_FOUND') ||
+          e.toString().contains('404') ||
+          e.toString().contains('Not Found')) {
+        print('⚠️ DEBUG - 저장된 장소 확인 API가 아직 구현되지 않았습니다.');
+        return false;
+      }
+      rethrow;
+    }
   }
 
   /// 회원가입
@@ -425,20 +616,35 @@ class ApiService {
     required String email,
     required String password,
   }) async {
-    final response = await post('/perfacto/auth/login', {
-      'email': email,
-      'password': password,
-    });
+    print('🔍 DEBUG - API login called');
 
-    // 토큰 저장
-    if (response['accessToken'] != null) {
-      setTokens(
-        accessToken: response['accessToken'],
-        refreshToken: response['refreshToken'],
-      );
+    try {
+      final response = await post('/perfacto/auth/login', {
+        'email': email,
+        'password': password,
+      });
+
+      print('🔍 DEBUG - login API response keys: ${response.keys}');
+      print('🔍 DEBUG - login API full response: $response');
+
+      // 응답 구조 확인: {code, message, data} 형태인지 확인
+      final data = response['data'] ?? response;
+
+      print('🔍 DEBUG - login data: $data');
+
+      // 토큰 저장
+      if (data['accessToken'] != null) {
+        setTokens(
+          accessToken: data['accessToken'],
+          refreshToken: data['refreshToken'],
+        );
+      }
+
+      return data;
+    } catch (e) {
+      print('❌ DEBUG - login API error: $e');
+      rethrow;
     }
-
-    return response;
   }
 
   // ==================== 사용자 검색 API ====================
@@ -473,10 +679,34 @@ class ApiService {
 
   // ==================== 프로필 업데이트 API ====================
 
-  /// 사용자 프로필 업데이트 (닉네임)
-  static Future<void> updateUserProfile({required String nickname}) async {
-    await patch('/perfacto/api/user/profile', {
-      'nickName': nickname,
-    });
+  /// 사용자 프로필 업데이트 (닉네임, 프로필 이미지)
+  static Future<void> updateUserProfile({
+    String? nickname,
+    String? profileImageUrl,
+  }) async {
+    final Map<String, dynamic> body = {};
+    if (nickname != null) body['nickName'] = nickname;
+    if (profileImageUrl != null) body['profileImageUrl'] = profileImageUrl;
+
+    if (body.isEmpty) {
+      throw Exception('업데이트할 정보가 없습니다');
+    }
+
+    await patch('/perfacto/api/user/profile', body);
+  }
+
+  /// 이미지 파일 업로드 (Base64)
+  static Future<String> uploadImage(String base64Image) async {
+    try {
+      final response = await postAuth('/perfacto/api/images/upload', {
+        'image': base64Image,
+      });
+
+      // 백엔드에서 업로드된 이미지 URL 반환
+      return response['data']['imageUrl'] as String;
+    } catch (e) {
+      print('❌ 이미지 업로드 실패: $e');
+      rethrow;
+    }
   }
 }
