@@ -1,20 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:io';
-import 'location_verification_page.dart';
-import 'point_reward_page.dart';
-import '../services/firestore_service.dart';
-import '../models/review_model.dart';
+import 'package:perfacto/services/api_service.dart';
 
 class ReviewWritePage extends StatefulWidget {
+  final int placeId;
   final String placeName;
-  final String placeId;
 
   const ReviewWritePage({
     super.key,
-    required this.placeName,
     required this.placeId,
+    required this.placeName,
   });
 
   @override
@@ -22,69 +16,62 @@ class ReviewWritePage extends StatefulWidget {
 }
 
 class _ReviewWritePageState extends State<ReviewWritePage> {
-  final TextEditingController _reviewController = TextEditingController();
-  final FirestoreService _firestoreService = FirestoreService();
-  final ImagePicker _picker = ImagePicker();
+  // 3단계 리뷰 시스템 상태
+  int _currentStep = 1;
 
-  bool _isLocationVerified = false;
-  List<File> _selectedImages = [];
-  double _progressValue = 0.0; // 0.0 = 0%, 0.5 = 50%, 0.8 = 80%, 1.0 = 100%
+  // 1단계: 전체 평가
+  String? _overallRating;
+
+  // 2단계: 이유 선택
+  final Set<String> _selectedReasons = {};
+
+  // 3단계: 비교 (선택사항)
+  int? _comparedPlaceId;
+  String? _comparisonResult;
+
   bool _isSubmitting = false;
 
-  @override
-  void dispose() {
-    _reviewController.dispose();
-    super.dispose();
+  // 평가 옵션
+  final List<Map<String, dynamic>> _ratingOptions = [
+    {'value': 'GOOD', 'label': '좋아요', 'icon': Icons.sentiment_satisfied, 'color': Color(0xFF4E8AD9)},
+    {'value': 'NEUTRAL', 'label': '괜찮아요', 'icon': Icons.sentiment_neutral, 'color': Color(0xFFFFA726)},
+    {'value': 'BAD', 'label': '별로예요', 'icon': Icons.sentiment_dissatisfied, 'color': Color(0xFFE57373)},
+  ];
+
+  // 이유 옵션 (각 평가별)
+  final Map<String, List<Map<String, String>>> _reasonsByRating = {
+    'GOOD': [
+      {'value': 'CLEAN', 'label': '깨끗해요'},
+      {'value': 'FRIENDLY', 'label': '친절해요'},
+      {'value': 'DELICIOUS', 'label': '맛있어요'},
+      {'value': 'ATMOSPHERE', 'label': '분위기가 좋아요'},
+      {'value': 'REASONABLE', 'label': '가격이 합리적이에요'},
+      {'value': 'LOCATION', 'label': '위치가 좋아요'},
+    ],
+    'NEUTRAL': [
+      {'value': 'ORDINARY', 'label': '평범해요'},
+      {'value': 'ACCEPTABLE', 'label': '무난해요'},
+      {'value': 'PRICE_MATCH', 'label': '가격대비 괜찮아요'},
+    ],
+    'BAD': [
+      {'value': 'DIRTY', 'label': '지저분해요'},
+      {'value': 'UNFRIENDLY', 'label': '불친절해요'},
+      {'value': 'NOT_DELICIOUS', 'label': '맛없어요'},
+      {'value': 'NOISY', 'label': '시끄러워요'},
+      {'value': 'EXPENSIVE', 'label': '비싸요'},
+      {'value': 'INCONVENIENT', 'label': '불편해요'},
+    ],
+  };
+
+  List<Map<String, String>> get _currentReasonOptions {
+    if (_overallRating == null) return [];
+    return _reasonsByRating[_overallRating] ?? [];
   }
 
-  // 이미지 선택
-  Future<void> _pickImages() async {
-    try {
-      final List<XFile> images = await _picker.pickMultiImage(
-        imageQuality: 80,
-      );
+  bool get _canProceedToStep2 => _overallRating != null;
+  bool get _canProceedToStep3 => _selectedReasons.isNotEmpty;
+  bool get _canSubmit => _selectedReasons.isNotEmpty && !_isSubmitting;
 
-      if (images.isNotEmpty) {
-        setState(() {
-          _selectedImages = images.map((xFile) => File(xFile.path)).toList();
-        });
-        _updateProgress();
-      }
-    } catch (e) {
-      print('Error picking images: $e');
-    }
-  }
-
-  // 진행률 계산
-  void _updateProgress() {
-    double progress = 0.0;
-
-    // 위치 인증: 50%
-    if (_isLocationVerified) {
-      progress += 0.5;
-    }
-
-    // 이미지 업로드: 30%
-    if (_selectedImages.isNotEmpty) {
-      progress += 0.3;
-    }
-
-    // 리뷰 200자 이상 작성: 20%
-    if (_reviewController.text.trim().length >= 200) {
-      progress += 0.2;
-    }
-
-    setState(() {
-      _progressValue = progress;
-    });
-  }
-
-  // 등록 버튼 활성화 여부
-  bool get _canSubmit {
-    return _isLocationVerified && _selectedImages.isNotEmpty && !_isSubmitting;
-  }
-
-  // 리뷰 등록
   Future<void> _submitReview() async {
     if (!_canSubmit) return;
 
@@ -93,44 +80,28 @@ class _ReviewWritePageState extends State<ReviewWritePage> {
     });
 
     try {
-      // 1. 이미지 업로드
-      List<String> imageUrls = await _firestoreService.uploadReviewImages(_selectedImages);
-
-      // 2. 리뷰 데이터 생성
-      final user = FirebaseAuth.instance.currentUser;
-      final review = ReviewModel(
-        id: '',
+      await ApiService.createReview(
         placeId: widget.placeId,
-        placeName: widget.placeName,
-        userId: user?.uid ?? 'anonymous',
-        reviewText: _reviewController.text.trim(),
-        imageUrls: imageUrls,
-        isLocationVerified: _isLocationVerified,
-        createdAt: DateTime.now(),
+        overallRating: _overallRating!,
+        reasons: _selectedReasons.toList(),
+        comparedPlaceId: _comparedPlaceId,
+        comparisonResult: _comparisonResult,
       );
 
-      // 3. Firestore에 저장
-      final reviewId = await _firestoreService.addReview(review);
-
-      if (reviewId != null && mounted) {
-        // 포인트 정산 페이지로 이동
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PointRewardPage(
-              hasGpsVerification: _isLocationVerified,
-              photoCount: _selectedImages.length,
-              hasReview: _reviewController.text.trim().isNotEmpty,
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      print('Error submitting review: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('리뷰 등록에 실패했습니다. 다시 시도해주세요.'),
+            content: Text('리뷰가 등록되었습니다'),
+            backgroundColor: Color(0xFF4E8AD9),
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('리뷰 등록 실패: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -144,519 +115,387 @@ class _ReviewWritePageState extends State<ReviewWritePage> {
     }
   }
 
-  // 이미지 삭제
-  void _removeImage(int index) {
-    setState(() {
-      _selectedImages.removeAt(index);
-      _updateProgress();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F6F0),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 상단 헤더
-            Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const SizedBox(width: 40),
-                  Text(
-                    widget.placeName,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 28),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
+      appBar: AppBar(
+        title: Text(widget.placeName),
+        backgroundColor: const Color(0xFF4E8AD9),
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // 진행 표시
+          _buildProgressIndicator(),
+
+          // 단계별 컨텐츠
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: _buildStepContent(),
             ),
+          ),
 
-            // 진행 바
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD9D9D9),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: _progressValue,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF4E8AD9),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'PERFACT',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: const Color(0xFFA5A4A0),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: const Text(
-                      '+20P',
-                      style: TextStyle(
-                        color: Color(0xFF4E8AD9),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          // 하단 버튼
+          _buildBottomButtons(),
+        ],
+      ),
+    );
+  }
 
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 16),
+  Widget _buildProgressIndicator() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: List.generate(3, (index) {
+          final stepNumber = index + 1;
+          final isActive = stepNumber <= _currentStep;
+          final isCompleted = stepNumber < _currentStep;
 
-                    // 제목
-                    const Text(
-                      '리뷰를 작성하고 다녀온 지역의\n리뷰 청결도를 높여보세요',
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                        height: 1.55,
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // 위치인증하기 버튼
-                    GestureDetector(
-                      onTap: () async {
-                        // 위치 인증 페이지로 이동
-                        final result = await Navigator.push<bool>(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => LocationVerificationPage(
-                              placeName: widget.placeName,
-                              placeId: widget.placeId,
-                            ),
-                          ),
-                        );
-
-                        // 인증 성공 시 상태 업데이트
-                        if (result == true && mounted) {
-                          setState(() {
-                            _isLocationVerified = true;
-                          });
-                          _updateProgress();
-                        }
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        height: 81,
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: const Color(0xFF8D8D8D),
-                            width: 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                          color: _isLocationVerified
-                              ? const Color(0xFF4E8AD9).withOpacity(0.1)
-                              : Colors.transparent,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '위치인증하기',
-                              style: TextStyle(
-                                color: _isLocationVerified
-                                    ? const Color(0xFF4E8AD9)
-                                    : const Color(0xFF414141),
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: const Color(0xFFA5A4A0),
-                                  width: 0.5,
-                                ),
-                              ),
-                              child: const Text(
-                                '+50P',
-                                style: TextStyle(
-                                  color: Color(0xFF4E8AD9),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // 사진/영상 추가하기
-                    GestureDetector(
-                      onTap: _pickImages,
-                      child: Container(
-                        width: double.infinity,
-                        constraints: BoxConstraints(
-                          minHeight: 187,
-                          maxHeight: _selectedImages.isEmpty ? 187 : 400,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: const Color(0xFF8D8D8D),
-                            width: 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: _selectedImages.isEmpty
-                            ? Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Text(
-                                        '사진/영상 추가하기',
-                                        style: TextStyle(
-                                          color: Color(0xFF414141),
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          border: Border.all(
-                                            color: const Color(0xFFA5A4A0),
-                                            width: 0.5,
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          '+30P',
-                                          style: TextStyle(
-                                            color: Color(0xFF4E8AD9),
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    '장소와 무관한 내용은 제외해주세요\n타인의 프라이버시를 존중해주세요',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Color(0xFF8D8D8D),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                      height: 1.67,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : Padding(
-                                padding: const EdgeInsets.all(12.0),
-                                child: SingleChildScrollView(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 6,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black,
-                                              borderRadius: BorderRadius.circular(20),
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                const Icon(
-                                                  Icons.check,
-                                                  color: Colors.white,
-                                                  size: 16,
-                                                ),
-                                                const SizedBox(width: 4),
-                                                const Text(
-                                                  '대표',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      GridView.builder(
-                                        shrinkWrap: true,
-                                        physics: const NeverScrollableScrollPhysics(),
-                                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: 3,
-                                          crossAxisSpacing: 8,
-                                          mainAxisSpacing: 8,
-                                        ),
-                                        itemCount: _selectedImages.length,
-                                        itemBuilder: (context, index) {
-                                          return Stack(
-                                            children: [
-                                              ClipRRect(
-                                                borderRadius: BorderRadius.circular(12),
-                                                child: Image.file(
-                                                  _selectedImages[index],
-                                                  fit: BoxFit.cover,
-                                                  width: double.infinity,
-                                                  height: double.infinity,
-                                                ),
-                                              ),
-                                              Positioned(
-                                                top: 4,
-                                                right: 4,
-                                                child: GestureDetector(
-                                                  onTap: () => _removeImage(index),
-                                                  child: Container(
-                                                    padding: const EdgeInsets.all(4),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.black.withOpacity(0.6),
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                    child: const Icon(
-                                                      Icons.close,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // 리뷰 작성 영역
-                    Container(
-                      width: double.infinity,
-                      height: 187,
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: const Color(0xFF8D8D8D),
-                          width: 0.5,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Column(
-                        children: [
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: TextField(
-                                controller: _reviewController,
-                                maxLines: null,
-                                maxLength: 300,
-                                decoration: const InputDecoration(
-                                  hintText: '리뷰를 작성해 주세요',
-                                  hintStyle: TextStyle(
-                                    color: Color(0xFF8D8D8D),
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  border: InputBorder.none,
-                                  counterText: '',
-                                ),
-                                onChanged: (value) {
-                                  _updateProgress();
-                                },
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              left: 16,
-                              right: 16,
-                              bottom: 12,
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                if (_reviewController.text.trim().length >= 200)
-                                  const Text(
-                                    '성실작성 기준이 충족되었어요!',
-                                    style: TextStyle(
-                                      color: Color(0xFF4E8AD9),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  )
-                                else
-                                  const SizedBox.shrink(),
-                                Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: '${_reviewController.text.length}',
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const TextSpan(
-                                        text: '/300',
-                                        style: TextStyle(
-                                          color: Color(0xFF8D8D8D),
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // 리뷰 작성 유의사항
-                    const Text(
-                      '리뷰 작성 유의사항',
-                      style: TextStyle(
-                        color: Color(0xFF4E8AD9),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-
-                    const SizedBox(height: 80),
-                  ],
-                ),
-              ),
-            ),
-
-            // 하단 그라데이션 및 등록 버튼
-            Container(
-              height: 41,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0x00F8F6F0),
-                    Color(0xFFF8F6F0),
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              height: 83,
-              color: const Color(0xFFF8F6F0),
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Center(
-                child: GestureDetector(
-                  onTap: _canSubmit ? _submitReview : null,
+          return Expanded(
+            child: Row(
+              children: [
+                Expanded(
                   child: Container(
-                    width: double.infinity,
-                    height: 57,
+                    height: 4,
                     decoration: BoxDecoration(
-                      color: _canSubmit
-                          ? const Color(0xFF4E8AD9)
-                          : const Color(0xFFCFCDC8),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Center(
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Color(0xFFF8F6F0),
-                                ),
-                              ),
-                            )
-                          : const Text(
-                              '등록하기',
-                              style: TextStyle(
-                                color: Color(0xFFF8F6F0),
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
+                      color: isActive ? const Color(0xFF4E8AD9) : const Color(0xFFD9D9D9),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
+                if (index < 2) const SizedBox(width: 8),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildStepContent() {
+    switch (_currentStep) {
+      case 1:
+        return _buildStep1();
+      case 2:
+        return _buildStep2();
+      case 3:
+        return _buildStep3();
+      default:
+        return const SizedBox();
+    }
+  }
+
+  Widget _buildStep1() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '이 장소는 어떠셨나요?',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '전체적인 평가를 선택해주세요',
+          style: TextStyle(
+            fontSize: 14,
+            color: Color(0xFF8D8D8D),
+          ),
+        ),
+        const SizedBox(height: 32),
+
+        ..._ratingOptions.map((option) => Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: _buildRatingOption(
+            value: option['value'] as String,
+            label: option['label'] as String,
+            icon: option['icon'] as IconData,
+            color: option['color'] as Color,
+          ),
+        )),
+      ],
+    );
+  }
+
+  Widget _buildRatingOption({
+    required String value,
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    final isSelected = _overallRating == value;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _overallRating = value;
+          _selectedReasons.clear(); // 평가 변경 시 이유 초기화
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.1) : Colors.white,
+          border: Border.all(
+            color: isSelected ? color : const Color(0xFFD9D9D9),
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 32,
+              color: isSelected ? color : const Color(0xFF8D8D8D),
+            ),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                color: isSelected ? color : Colors.black,
               ),
             ),
+            const Spacer(),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                color: color,
+                size: 24,
+              ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildStep2() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '어떤 점이 그러셨나요?',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '해당되는 이유를 모두 선택해주세요',
+          style: TextStyle(
+            fontSize: 14,
+            color: Color(0xFF8D8D8D),
+          ),
+        ),
+        const SizedBox(height: 32),
+
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: _currentReasonOptions.map((reason) {
+            final isSelected = _selectedReasons.contains(reason['value']);
+
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (isSelected) {
+                    _selectedReasons.remove(reason['value']);
+                  } else {
+                    _selectedReasons.add(reason['value']!);
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFF4E8AD9) : Colors.white,
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFF4E8AD9) : const Color(0xFFD9D9D9),
+                    width: 1.5,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Text(
+                  reason['label']!,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? Colors.white : Colors.black,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStep3() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '다른 장소와 비교해보세요',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '선택사항입니다. 건너뛰어도 됩니다.',
+          style: TextStyle(
+            fontSize: 14,
+            color: Color(0xFF8D8D8D),
+          ),
+        ),
+        const SizedBox(height: 32),
+
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFD9D9D9)),
+          ),
+          child: const Center(
+            child: Text(
+              '비교 기능은 추후 업데이트 예정입니다',
+              style: TextStyle(
+                fontSize: 16,
+                color: Color(0xFF8D8D8D),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomButtons() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F6F0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          if (_currentStep > 1)
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () {
+                  setState(() {
+                    _currentStep--;
+                  });
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  side: const BorderSide(color: Color(0xFF4E8AD9)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  '이전',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4E8AD9),
+                  ),
+                ),
+              ),
+            ),
+
+          if (_currentStep > 1) const SizedBox(width: 12),
+
+          Expanded(
+            flex: _currentStep == 1 ? 1 : 2,
+            child: ElevatedButton(
+              onPressed: _getNextButtonAction(),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: _getNextButtonColor(),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      _getNextButtonText(),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  VoidCallback? _getNextButtonAction() {
+    if (_currentStep == 1) {
+      return _canProceedToStep2 ? () {
+        setState(() {
+          _currentStep = 2;
+        });
+      } : null;
+    } else if (_currentStep == 2) {
+      return _canProceedToStep3 ? () {
+        setState(() {
+          _currentStep = 3;
+        });
+      } : null;
+    } else {
+      return _canSubmit ? _submitReview : null;
+    }
+  }
+
+  Color _getNextButtonColor() {
+    final canProceed = _currentStep == 1 ? _canProceedToStep2 :
+                       _currentStep == 2 ? _canProceedToStep3 :
+                       _canSubmit;
+    return canProceed ? const Color(0xFF4E8AD9) : const Color(0xFFCFCDC8);
+  }
+
+  String _getNextButtonText() {
+    if (_currentStep == 3) {
+      return '등록하기';
+    }
+    return '다음';
   }
 }
