@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/place_model.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/saved_places_service.dart';
 import 'place_detail_page.dart';
 import 'login_page.dart';
 
@@ -56,12 +57,41 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
     });
 
     try {
-      final data = await ApiService.getSavedPlaces();
+      // 로컬에서 저장된 장소 ID 목록 가져오기
+      final savedIds = await SavedPlacesService.getSavedPlaceIds();
+      print('🔍 DEBUG - 저장된 장소 ID: $savedIds');
+
+      if (savedIds.isEmpty) {
+        setState(() {
+          _savedPlaces = [];
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // 전체 카테고리의 장소 데이터 가져오기
+      final List<PlaceModel> allPlaces = [];
+      for (int categoryId = 1; categoryId <= 4; categoryId++) {
+        try {
+          final places = await ApiService.getPlaces(categoryId: categoryId, size: 100);
+          for (var placeData in places) {
+            allPlaces.add(PlaceModel.fromJson(placeData));
+          }
+        } catch (e) {
+          print('❌ DEBUG - 카테고리 $categoryId 로딩 실패: $e');
+        }
+      }
+
+      // 저장된 ID에 해당하는 장소만 필터링
+      final savedPlaces = allPlaces.where((place) => savedIds.contains(place.id)).toList();
+      print('✅ DEBUG - 저장된 장소 ${savedPlaces.length}개 로드됨');
+
       setState(() {
-        _savedPlaces = data.map((p) => PlaceModel.fromJson(p)).toList();
+        _savedPlaces = savedPlaces;
         _isLoading = false;
       });
     } catch (e) {
+      print('❌ DEBUG - _loadSavedPlaces error: $e');
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -71,7 +101,8 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
 
   Future<void> _unsavePlace(int placeId) async {
     try {
-      await ApiService.unsavePlace(placeId);
+      // 로컬에서 저장 취소
+      await SavedPlacesService.unsavePlace(placeId);
       await _loadSavedPlaces(); // 새로고침
 
       if (mounted) {
@@ -80,6 +111,7 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
         );
       }
     } catch (e) {
+      print('❌ DEBUG - _unsavePlace error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

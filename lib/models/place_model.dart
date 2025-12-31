@@ -37,6 +37,15 @@ class PlaceModel {
     this.eloRating,
   });
 
+  // 안전한 double 파싱
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
   // 카테고리 ID를 문자열로 변환
   static String _categoryIdToString(int? categoryId) {
     switch (categoryId) {
@@ -95,17 +104,27 @@ class PlaceModel {
       distance: data['distance']?.toString() ?? '0km',
       address: data['address'],
       district: data['district'],
-      latitude: (data['latitude'] ?? 0.0).toDouble(),
-      longitude: (data['longitude'] ?? 0.0).toDouble(),
+      latitude: _parseDouble(data['latitude']),
+      longitude: _parseDouble(data['longitude']),
       imageUrls: data['imageUrls'] != null
-          ? List<String>.from(data['imageUrls'])
+          ? (data['imageUrls'] is List
+              ? List<String>.from(data['imageUrls'])
+              : (data['imageUrls'] is String ? [data['imageUrls']] : []))
           : [],
-      rating: (data['rating'] ?? data['averageRating'] ?? 0.0).toDouble(),
-      averageRating: data['averageRating'] != null ? (data['averageRating'] as num).toDouble() : null,
-      reviewCount: data['reviewCount'] ?? 0,
-      saveCount: data['saveCount'] ?? data['bookmarkCount'],
+      rating: _parseDouble(data['rating'] ?? data['averageRating']),
+      averageRating: data['averageRating'] != null ? _parseDouble(data['averageRating']) : null,
+      reviewCount: data['reviewCount'] is int
+          ? data['reviewCount']
+          : (int.tryParse(data['reviewCount']?.toString() ?? '0') ?? 0),
+      saveCount: data['saveCount'] != null
+          ? (data['saveCount'] is int ? data['saveCount'] : int.tryParse(data['saveCount'].toString()))
+          : (data['bookmarkCount'] != null
+              ? (data['bookmarkCount'] is int ? data['bookmarkCount'] : int.tryParse(data['bookmarkCount'].toString()))
+              : null),
       isSaved: data['isSaved'] ?? false,
-      eloRating: data['eloRating'],
+      eloRating: data['eloRating'] is int
+          ? data['eloRating']
+          : (data['eloRating'] != null ? int.tryParse(data['eloRating'].toString()) : null),
     );
   }
 

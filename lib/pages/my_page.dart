@@ -79,56 +79,63 @@ class _MyPageState extends State<MyPage> {
 
         print('🔍 DEBUG - Final userName: $_userName, userEmail: $_userEmail');
 
-        // 나머지 정보는 개별 try-catch로 처리 (하나 실패해도 계속 진행)
-        try {
-          final following = await ApiService.getFollowing(userId);
-          final followers = await ApiService.getFollowers(userId);
-          setState(() {
-            _followingCount = following.length;
-            _followerCount = followers.length;
-          });
-        } catch (e) {
-          print('⚠️ 팔로우 정보 로딩 실패: $e');
-        }
+        // 나머지 정보는 병렬로 로드 (하나 실패해도 계속 진행)
+        print('🚀 병렬 API 호출 시작...');
+        final startTime = DateTime.now();
 
-        try {
-          final reviews = await ApiService.getUserReviews(userId);
-          setState(() {
-            _reviewCount = reviews.length;
-          });
-        } catch (e) {
-          print('⚠️ 리뷰 정보 로딩 실패: $e');
-        }
+        final results = await Future.wait([
+          // 팔로잉/팔로워 정보
+          ApiService.getFollowing(userId).catchError((e) {
+            print('⚠️ 팔로잉 정보 로딩 실패: $e');
+            return <dynamic>[];
+          }),
+          ApiService.getFollowers(userId).catchError((e) {
+            print('⚠️ 팔로워 정보 로딩 실패: $e');
+            return <dynamic>[];
+          }),
+          // 리뷰 정보
+          ApiService.getUserReviews(userId).catchError((e) {
+            print('⚠️ 리뷰 정보 로딩 실패: $e');
+            return <dynamic>[];
+          }),
+          // 저장된 장소 정보
+          ApiService.getSavedPlaces().catchError((e) {
+            print('⚠️ 저장된 장소 정보 로딩 실패: $e');
+            return <dynamic>[];
+          }),
+        ]);
 
-        try {
-          final savedPlaces = await ApiService.getSavedPlaces();
+        final elapsedMs = DateTime.now().difference(startTime).inMilliseconds;
+        print('✅ 병렬 API 호출 완료 (${elapsedMs}ms)');
 
-          // API가 빈 배열을 반환하면 로컬 저장소 사용
-          if (savedPlaces.isEmpty) {
+        // 병렬 로드 결과 처리
+        final following = results[0] as List<dynamic>;
+        final followers = results[1] as List<dynamic>;
+        final reviews = results[2] as List<dynamic>;
+        final savedPlaces = results[3] as List<dynamic>;
+
+        // 저장된 장소 카운트 계산 (API가 빈 배열이면 로컬 저장소 사용)
+        int savedPlacesCount = savedPlaces.length;
+        if (savedPlacesCount == 0) {
+          try {
             print('⚠️ API에서 저장된 장소가 없음. 로컬 저장소 확인 중...');
             final savedPlaceIds = await SavedPlacesService.getSavedPlaceIds();
-            setState(() {
-              _savedPlacesCount = savedPlaceIds.length;
-            });
-            print('✅ 로컬 저장소에서 ${savedPlaceIds.length}개 장소 카운트 로드');
-          } else {
-            setState(() {
-              _savedPlacesCount = savedPlaces.length;
-            });
-          }
-        } catch (e) {
-          print('⚠️ 저장된 장소 정보 로딩 실패: $e');
-          // API 실패 시 로컬 저장소에서 카운트 가져오기
-          try {
-            final savedPlaceIds = await SavedPlacesService.getSavedPlaceIds();
-            setState(() {
-              _savedPlacesCount = savedPlaceIds.length;
-            });
+            savedPlacesCount = savedPlaceIds.length;
             print('✅ 로컬 저장소에서 ${savedPlaceIds.length}개 장소 카운트 로드');
           } catch (localError) {
             print('❌ 로컬 저장소에서도 로딩 실패: $localError');
           }
         }
+
+        // 모든 결과를 한 번에 업데이트
+        setState(() {
+          _followingCount = following.length;
+          _followerCount = followers.length;
+          _reviewCount = reviews.length;
+          _savedPlacesCount = savedPlacesCount;
+        });
+
+        print('📊 로딩 완료 - 팔로잉: $_followingCount, 팔로워: $_followerCount, 리뷰: $_reviewCount, 저장: $_savedPlacesCount');
 
         setState(() {
           _isLoading = false;

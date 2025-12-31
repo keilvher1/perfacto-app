@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/place_model.dart';
 import '../models/review_model.dart';
 import '../services/api_service.dart';
+import '../services/saved_places_service.dart';
 import 'review_write_new_page.dart';
 
 /// 장소 상세 페이지
@@ -48,12 +49,26 @@ class _PlaceDetailPageState extends State<PlaceDetailPage>
 
     try {
       // 장소 정보 로드
+      print('🔍 DEBUG - Loading place: ${widget.placeId}');
       final placeData = await ApiService.getPlace(widget.placeId);
+      print('🔍 DEBUG - Place data type: ${placeData.runtimeType}');
+      print('🔍 DEBUG - Place data keys: ${placeData.keys}');
+
       _place = PlaceModel.fromJson(placeData);
+      print('✅ DEBUG - Place loaded successfully');
 
       // 전체 리뷰 로드
+      print('🔍 DEBUG - Loading reviews for place: ${widget.placeId}');
       final allReviewsData = await ApiService.getReviews(widget.placeId);
+      print('🔍 DEBUG - Reviews data type: ${allReviewsData.runtimeType}');
+      print('🔍 DEBUG - Reviews count: ${allReviewsData.length}');
+
+      if (allReviewsData.isNotEmpty) {
+        print('🔍 DEBUG - First review data: ${allReviewsData[0]}');
+      }
+
       _allReviews = allReviewsData.map((r) => ReviewModel.fromJson(r)).toList();
+      print('✅ DEBUG - Reviews loaded successfully');
 
       // 팔로잉 리뷰 로드 (로그인 시)
       try {
@@ -62,21 +77,27 @@ class _PlaceDetailPageState extends State<PlaceDetailPage>
         _followingReviews =
             followingReviewsData.map((r) => ReviewModel.fromJson(r)).toList();
       } catch (e) {
+        print('⚠️ DEBUG - Following reviews error: $e');
         // 로그인하지 않았거나 팔로잉이 없는 경우
         _followingReviews = [];
       }
 
-      // 저장 여부 확인 (로그인 시)
+      // 저장 여부 확인 (로컬에서)
       try {
-        _isSaved = await ApiService.isSaved(widget.placeId);
+        _isSaved = await SavedPlacesService.isSaved(widget.placeId);
+        print('🔍 DEBUG - Is saved: $_isSaved');
       } catch (e) {
+        print('⚠️ DEBUG - Is saved check error: $e');
         _isSaved = false;
       }
 
       setState(() {
         _isLoading = false;
       });
-    } catch (e) {
+      print('✅ DEBUG - All data loaded successfully');
+    } catch (e, stackTrace) {
+      print('❌ DEBUG - Load data error: $e');
+      print('❌ DEBUG - Stack trace: $stackTrace');
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -87,9 +108,9 @@ class _PlaceDetailPageState extends State<PlaceDetailPage>
   Future<void> _toggleSaved() async {
     try {
       if (_isSaved) {
-        await ApiService.unsavePlace(widget.placeId);
+        await SavedPlacesService.unsavePlace(widget.placeId);
       } else {
-        await ApiService.savePlace(widget.placeId);
+        await SavedPlacesService.savePlace(widget.placeId);
       }
 
       setState(() {

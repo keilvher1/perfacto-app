@@ -10,6 +10,8 @@ import '../models/place_model.dart';
 import '../models/review_model.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/saved_places_service.dart';
+import '../services/places_cache_service.dart';
 import 'login_page.dart';
 import 'my_page.dart';
 import 'review_write_new_page.dart';
@@ -55,38 +57,77 @@ class _HomePageState extends State<HomePage> {
     _loadPlacesFromBackend();
   }
 
-  // 백엔드에서 장소 데이터 가져오기
+  // 백엔드에서 장소 데이터 가져오기 (캐싱 사용)
   Future<void> _loadPlacesFromBackend() async {
+    print('🔍 DEBUG - _loadPlacesFromBackend 시작');
+
     try {
-      // 모든 카테고리의 장소 가져오기
+      // 1. 캐시부터 확인하여 즉시 표시
+      final cachedPlaces = await PlacesCacheService.getCachedPlaces();
+      if (cachedPlaces != null && cachedPlaces.isNotEmpty) {
+        print('⚡ 캐시된 데이터 먼저 표시: ${cachedPlaces.length}개 장소');
+        if (mounted) {
+          setState(() {
+            _firestorePlaces = cachedPlaces;
+            _isLoading = false;
+          });
+          _updateMarkers();
+        }
+      }
+
+      // 2. 백그라운드에서 최신 데이터 가져오기
+      print('🔄 백그라운드에서 최신 데이터 가져오는 중...');
       final List<PlaceModel> allPlaces = [];
 
       // 카테고리 ID: 1=음식점, 2=숙박, 3=카페, 4=관광지
       for (int categoryId = 1; categoryId <= 4; categoryId++) {
+        print('🔍 DEBUG - 카테고리 $categoryId 로딩 시작');
         try {
           final places = await ApiService.getPlaces(categoryId: categoryId, size: 100);
+          print('🔍 DEBUG - 카테고리 $categoryId: ${places.length}개 장소 로드됨');
           for (var placeData in places) {
             allPlaces.add(PlaceModel.fromJson(placeData));
           }
         } catch (e) {
-          print('카테고리 $categoryId 로딩 실패: $e');
+          print('❌ DEBUG - 카테고리 $categoryId 로딩 실패: $e');
         }
       }
 
-      setState(() {
-        _firestorePlaces = allPlaces;
-        _isLoading = false;
-      });
+      print('🔍 DEBUG - 총 ${allPlaces.length}개 장소 데이터 수집 완료');
 
-      // 마커 업데이트
-      _updateMarkers();
+      // 3. 최신 데이터를 캐시에 저장
+      if (allPlaces.isNotEmpty) {
+        await PlacesCacheService.cachePlaces(allPlaces);
+        print('💾 최신 데이터 캐시에 저장됨');
+      }
 
-      print('총 ${allPlaces.length}개의 장소 로드 완료');
+      // 4. UI 업데이트
+      if (mounted) {
+        setState(() {
+          _firestorePlaces = allPlaces;
+          _isLoading = false;
+        });
+        _updateMarkers();
+      }
+
+      print('✅ DEBUG - 총 ${allPlaces.length}개의 장소 로드 완료');
     } catch (e) {
-      print('장소 데이터 로딩 실패: $e');
-      setState(() {
-        _isLoading = false;
-      });
+      print('❌ DEBUG - 장소 데이터 로딩 실패: $e');
+
+      // 에러 발생 시 캐시라도 사용
+      final cachedPlaces = await PlacesCacheService.getCachedPlaces();
+      if (cachedPlaces != null && cachedPlaces.isNotEmpty && mounted) {
+        print('⚠️ 에러 발생, 캐시 데이터 사용: ${cachedPlaces.length}개 장소');
+        setState(() {
+          _firestorePlaces = cachedPlaces;
+          _isLoading = false;
+        });
+        _updateMarkers();
+      } else if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -1034,15 +1075,16 @@ class _BottomSheetContentForFirestoreState
     super.dispose();
   }
 
-  // Toggle save/bookmark state
+  // Toggle save/bookmark state (로컬 저장 사용)
   Future<void> _toggleSave() async {
     try {
+      // import 추가 필요: import '../services/saved_places_service.dart';
       if (_isSaved) {
-        // Remove bookmark
-        await ApiService.removeBookmark(widget.place.id);
+        // Remove from saved places
+        await SavedPlacesService.unsavePlace(widget.place.id);
       } else {
-        // Add bookmark
-        await ApiService.addBookmark(widget.place.id);
+        // Add to saved places
+        await SavedPlacesService.savePlace(widget.place.id);
       }
 
       // Update local state
@@ -1063,10 +1105,12 @@ class _BottomSheetContentForFirestoreState
         );
       }
     } catch (e) {
+      print('❌ DEBUG - _toggleSave error: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('오류가 발생했습니다: $e'),
+            content: Text('오류가 발생했습니다'),
             duration: const Duration(seconds: 2),
             backgroundColor: Colors.red,
           ),
