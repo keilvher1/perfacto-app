@@ -451,13 +451,23 @@ class ApiService {
 
   /// 사용자의 리뷰 목록 조회
   static Future<List<dynamic>> getUserReviews(int userId, {int page = 0, int size = 20}) async {
-    final response = await get('/perfacto/every/reviews/user/$userId?page=$page&size=$size');
+    try {
+      final response = await get('/perfacto/every/reviews/user/$userId?page=$page&size=$size');
 
-    // data가 리스트인 경우와 pagination 객체인 경우 모두 처리
-    if (response['data'] is List) {
-      return response['data'] as List<dynamic>;
-    } else {
-      return response['data']['content'] as List<dynamic>;
+      // data가 리스트인 경우와 pagination 객체인 경우 모두 처리
+      if (response['data'] is List) {
+        return response['data'] as List<dynamic>;
+      } else {
+        return response['data']['content'] as List<dynamic>;
+      }
+    } catch (e) {
+      // 404 에러 또는 엔드포인트 미구현 시 빈 배열 반환
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ 사용자 리뷰 엔드포인트 미구현: 빈 배열 반환');
+        return [];
+      }
+      // 다른 에러는 다시 던짐
+      rethrow;
     }
   }
 
