@@ -104,10 +104,14 @@ class ReviewModel {
           ? _parseComparison(json['comparisonResult'])
           : null,
       imageUrls: json['imageUrls'] != null
-          ? List<String>.from(json['imageUrls'])
+          ? (json['imageUrls'] is List
+              ? List<String>.from(json['imageUrls'])
+              : (json['imageUrls'] is String ? [json['imageUrls']] : []))
           : [],
       comment: json['comment'],
-      likeCount: json['likeCount'] ?? 0,
+      likeCount: json['likeCount'] is int
+          ? json['likeCount']
+          : (int.tryParse(json['likeCount']?.toString() ?? '0') ?? 0),
       isLikedByMe: json['isLikedByMe'] ?? false,
       createdAt: DateTime.parse(json['createdAt']),
     );

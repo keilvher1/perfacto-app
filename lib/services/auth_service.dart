@@ -18,10 +18,14 @@ class AuthService {
     required String password,
   }) async {
     try {
+      print('🔍 DEBUG - signIn called with email: $email');
+
       final response = await ApiService.login(
         email: email,
         password: password,
       );
+
+      print('🔍 DEBUG - login response: $response');
 
       // 토큰 저장
       final accessToken = response['accessToken'] as String;
@@ -29,13 +33,18 @@ class AuthService {
       final userId = response['userId'].toString();
       final userEmail = response['email'] as String?;
 
+      print('🔍 DEBUG - Saving tokens - accessToken: ${accessToken.substring(0, 20)}..., userId: $userId');
+
       await _saveTokens(accessToken, refreshToken, userId, userEmail ?? '');
 
       _currentUserId = userId;
       _currentUserEmail = userEmail;
 
+      print('🔍 DEBUG - Login successful');
+
       return response;
     } catch (e) {
+      print('❌ DEBUG - signIn error: $e');
       throw Exception('로그인 실패: $e');
     }
   }

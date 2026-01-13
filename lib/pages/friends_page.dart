@@ -39,15 +39,17 @@ class _FriendsPageState extends State<FriendsPage> {
       final userId = 1;
       final following = await ApiService.getFollowing(userId);
 
-      setState(() {
-        _following = List<Map<String, dynamic>>.from(following);
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
       if (mounted) {
+        setState(() {
+          _following = List<Map<String, dynamic>>.from(following);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('오류가 발생했습니다: $e')),
         );
