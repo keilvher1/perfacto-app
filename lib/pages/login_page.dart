@@ -1,15 +1,19 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:perfacto/services/auth_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/auth_provider.dart';
 import 'signup_page.dart';
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends ConsumerState<LoginPage> {
   bool _keepLoggedIn = false;
   bool _obscurePassword = true;
   final TextEditingController _emailController = TextEditingController();
@@ -40,8 +44,8 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      // 백엔드 API로 로그인
-      await AuthService.signIn(
+      // Riverpod Provider로 로그인
+      await ref.read(authNotifierProvider.notifier).signInWithEmailPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
@@ -73,6 +77,99 @@ class _LoginPageState extends State<LoginPage> {
             child: const Text('확인'),
           ),
         ],
+      ),
+    );
+  }
+
+  bool _isApplePlatform() {
+    try {
+      return Platform.isIOS || Platform.isMacOS;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final user = await ref.read(authNotifierProvider.notifier).signInWithGoogle();
+      if (user != null && mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      _showErrorDialog(e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _signInWithApple() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final user = await ref.read(authNotifierProvider.notifier).signInWithApple();
+      if (user != null && mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      _showErrorDialog(e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildSocialLoginButton({
+    required VoidCallback? onPressed,
+    required IconData icon,
+    required String label,
+    required Color backgroundColor,
+    required Color textColor,
+    Color? borderColor,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: backgroundColor,
+          foregroundColor: textColor,
+          side: BorderSide(
+            color: borderColor ?? backgroundColor,
+            width: 1,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 24, color: textColor),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: textColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -271,7 +368,55 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                 ),
-                const SizedBox(height: 50),
+                const SizedBox(height: 30),
+                // 구분선
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: 1,
+                        color: const Color(0xFF8D8D8D).withOpacity(0.5),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'Or',
+                        style: TextStyle(
+                          color: Color(0xFF8D8D8D),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Container(
+                        height: 1,
+                        color: const Color(0xFF8D8D8D).withOpacity(0.5),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 30),
+                // 소셜 로그인 버튼들
+                _buildSocialLoginButton(
+                  onPressed: _isLoading ? null : _signInWithGoogle,
+                  icon: Icons.g_mobiledata,
+                  label: 'Google로 계속하기',
+                  backgroundColor: Colors.white,
+                  textColor: Colors.black87,
+                  borderColor: const Color(0xFF8D8D8D),
+                ),
+                const SizedBox(height: 12),
+                // Apple 로그인 (iOS와 Web에서만 표시)
+                if (kIsWeb || _isApplePlatform())
+                  _buildSocialLoginButton(
+                    onPressed: _isLoading ? null : _signInWithApple,
+                    icon: Icons.apple,
+                    label: 'Apple로 계속하기',
+                    backgroundColor: Colors.black,
+                    textColor: Colors.white,
+                  ),
+                const SizedBox(height: 30),
                 // 회원가입 버튼
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

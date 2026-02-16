@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/place_model.dart';
 import '../models/review_model.dart';
-import '../services/api_service.dart';
+import '../services/firestore_service.dart';
 import '../services/saved_places_service.dart';
 import 'review_write_new_page.dart';
 
 /// 장소 상세 페이지
 class PlaceDetailPage extends StatefulWidget {
-  final int placeId;
+  final String placeId;
 
   const PlaceDetailPage({
     super.key,
@@ -50,16 +50,15 @@ class _PlaceDetailPageState extends State<PlaceDetailPage>
     try {
       // 장소 정보 로드
       print('🔍 DEBUG - Loading place: ${widget.placeId}');
-      final placeData = await ApiService.getPlace(widget.placeId);
+      final placeData = await FirestoreService.getPlace(widget.placeId);
       print('🔍 DEBUG - Place data type: ${placeData.runtimeType}');
-      print('🔍 DEBUG - Place data keys: ${placeData.keys}');
 
-      _place = PlaceModel.fromJson(placeData);
+      _place = placeData;
       print('✅ DEBUG - Place loaded successfully');
 
       // 전체 리뷰 로드
       print('🔍 DEBUG - Loading reviews for place: ${widget.placeId}');
-      final allReviewsData = await ApiService.getReviews(widget.placeId);
+      final allReviewsData = await FirestoreService.getReviews(widget.placeId);
       print('🔍 DEBUG - Reviews data type: ${allReviewsData.runtimeType}');
       print('🔍 DEBUG - Reviews count: ${allReviewsData.length}');
 
@@ -67,20 +66,12 @@ class _PlaceDetailPageState extends State<PlaceDetailPage>
         print('🔍 DEBUG - First review data: ${allReviewsData[0]}');
       }
 
-      _allReviews = allReviewsData.map((r) => ReviewModel.fromJson(r)).toList();
+      _allReviews = allReviewsData;
       print('✅ DEBUG - Reviews loaded successfully');
 
-      // 팔로잉 리뷰 로드 (로그인 시)
-      try {
-        final followingReviewsData =
-            await ApiService.getFollowingReviews(widget.placeId);
-        _followingReviews =
-            followingReviewsData.map((r) => ReviewModel.fromJson(r)).toList();
-      } catch (e) {
-        print('⚠️ DEBUG - Following reviews error: $e');
-        // 로그인하지 않았거나 팔로잉이 없는 경우
-        _followingReviews = [];
-      }
+      // 팔로잉 리뷰는 전체 리뷰에서 필터링 (Firebase에서는 별도 엔드포인트 불필요)
+      // TODO: 필요시 로그인 사용자의 팔로잉 목록 기반으로 필터링 구현
+      _followingReviews = [];
 
       // 저장 여부 확인 (로컬에서)
       try {

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:perfacto/services/auth_service.dart';
-import 'package:perfacto/services/api_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:perfacto/services/firebase_auth_service.dart';
+import 'package:perfacto/services/firestore_service.dart';
 import 'package:perfacto/services/saved_places_service.dart';
+import 'package:perfacto/providers/auth_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -10,15 +12,16 @@ import 'follow_list_page.dart';
 import 'saved_places_page.dart';
 import 'my_reviews_page.dart';
 import 'settings_page.dart';
+import 'want_to_try_page.dart';
 
-class MyPage extends StatefulWidget {
+class MyPage extends ConsumerStatefulWidget {
   const MyPage({super.key});
 
   @override
-  State<MyPage> createState() => _MyPageState();
+  ConsumerState<MyPage> createState() => _MyPageState();
 }
 
-class _MyPageState extends State<MyPage> {
+class _MyPageState extends ConsumerState<MyPage> {
   bool _isLoggedIn = false;
   Map<String, dynamic>? _userProfile;
   int _followingCount = 0;
@@ -40,7 +43,10 @@ class _MyPageState extends State<MyPage> {
       _isLoading = true;
     });
 
-    final isLoggedIn = await AuthService.isLoggedIn();
+    // Riverpod provider를 사용하여 로그인 상태 확인
+    final currentUser = ref.read(currentUserProvider).value;
+    final isLoggedIn = currentUser != null;
+
     setState(() {
       _isLoggedIn = isLoggedIn;
     });
@@ -48,8 +54,8 @@ class _MyPageState extends State<MyPage> {
     if (isLoggedIn) {
       try {
         // 실제 사용자 ID 가져오기
-        final userIdStr = AuthService.currentUserId;
-        final userEmail = AuthService.currentUserEmail;
+        final userIdStr = FirebaseAuthService.currentUserId;
+        final userEmail = FirebaseAuthService.currentUserEmail;
 
         print('🔍 DEBUG - userIdStr: $userIdStr, userEmail: $userEmail');
 
@@ -57,14 +63,12 @@ class _MyPageState extends State<MyPage> {
           throw Exception('사용자 ID를 찾을 수 없습니다');
         }
 
-        final userId = int.parse(userIdStr);
-
         // 사용자 프로필 정보 가져오기 (최우선)
-        final userProfile = await ApiService.getUserById(userId);
+        final userProfile = await FirebaseAuthService.getUserProfile(userIdStr);
         print('🔍 DEBUG - userProfile: $userProfile');
 
         // 기본 사용자 정보 먼저 설정
-        final profileEmail = userProfile['email'];
+        final profileEmail = userProfile?['email'];
         final authEmail = userEmail;
 
         print('🔍 DEBUG - profileEmail from API: $profileEmail');
@@ -72,7 +76,7 @@ class _MyPageState extends State<MyPage> {
 
         setState(() {
           _userProfile = userProfile;
-          _userName = userProfile['nickName'] ?? userProfile['name'] ?? '사용자';
+          _userName = userProfile?['nickName'] ?? userProfile?['name'] ?? '사용자';
           // userProfile에서 가져온 email을 최우선으로 사용
           _userEmail = profileEmail ?? authEmail ?? 'user@example.com';
         });
@@ -85,21 +89,21 @@ class _MyPageState extends State<MyPage> {
 
         final results = await Future.wait([
           // 팔로잉/팔로워 정보
-          ApiService.getFollowing(userId).catchError((e) {
+          FirestoreService.getFollowing(userIdStr).catchError((e) {
             print('⚠️ 팔로잉 정보 로딩 실패: $e');
             return <dynamic>[];
           }),
-          ApiService.getFollowers(userId).catchError((e) {
+          FirestoreService.getFollowers(userIdStr).catchError((e) {
             print('⚠️ 팔로워 정보 로딩 실패: $e');
             return <dynamic>[];
           }),
           // 리뷰 정보
-          ApiService.getUserReviews(userId).catchError((e) {
+          FirestoreService.getUserReviews(userIdStr).catchError((e) {
             print('⚠️ 리뷰 정보 로딩 실패: $e');
             return <dynamic>[];
           }),
           // 저장된 장소 정보
-          ApiService.getSavedPlaces().catchError((e) {
+          FirestoreService.getSavedPlaces().catchError((e) {
             print('⚠️ 저장된 장소 정보 로딩 실패: $e');
             return <dynamic>[];
           }),
@@ -155,7 +159,8 @@ class _MyPageState extends State<MyPage> {
   }
 
   Future<void> _handleLogout() async {
-    await AuthService.signOut();
+    // Riverpod authNotifier를 사용하여 로그아웃
+    await ref.read(authNotifierProvider.notifier).signOut();
     setState(() {
       _isLoggedIn = false;
       _userProfile = null;
@@ -392,11 +397,12 @@ class _MyPageState extends State<MyPage> {
       final bytes = await imageFile.readAsBytes();
       final base64Image = base64Encode(bytes);
 
-      // 서버에 업로드
-      final imageUrl = await ApiService.uploadImage(base64Image);
+      // Firebase Storage에 업로드 (TODO: FirebaseAuthService에 uploadImage 메서드 추가 필요)
+      // 임시로 base64 이미지를 직접 사용
+      final imageUrl = 'data:image/png;base64,$base64Image';
 
       // 프로필 업데이트
-      await ApiService.updateUserProfile(profileImageUrl: imageUrl);
+      await FirebaseAuthService.updateUserProfile(photoURL: imageUrl);
 
       // 로컬 상태 업데이트
       setState(() {
@@ -453,7 +459,7 @@ class _MyPageState extends State<MyPage> {
 
     if (confirmed == true) {
       try {
-        await ApiService.updateUserProfile(profileImageUrl: '');
+        await FirebaseAuthService.updateUserProfile(photoURL: '');
 
         setState(() {
           if (_userProfile != null) {
@@ -515,7 +521,7 @@ class _MyPageState extends State<MyPage> {
     if (result != null && result.trim().isNotEmpty && result != _userName) {
       try {
         print('🔍 DEBUG - Updating nickname to: ${result.trim()}');
-        await ApiService.updateUserProfile(nickname: result.trim());
+        await FirebaseAuthService.updateUserProfile(nickname: result.trim());
         print('✅ DEBUG - Nickname update successful');
 
         setState(() {
@@ -563,7 +569,7 @@ class _MyPageState extends State<MyPage> {
             label: '팔로잉',
             value: '$_followingCount',
             onTap: () {
-              final userIdStr = AuthService.currentUserId;
+              final userIdStr = FirebaseAuthService.currentUserId;
               if (userIdStr != null) {
                 final userId = int.parse(userIdStr);
                 Navigator.push(
@@ -587,7 +593,7 @@ class _MyPageState extends State<MyPage> {
             label: '팔로워',
             value: '$_followerCount',
             onTap: () {
-              final userIdStr = AuthService.currentUserId;
+              final userIdStr = FirebaseAuthService.currentUserId;
               if (userIdStr != null) {
                 final userId = int.parse(userIdStr);
                 Navigator.push(
@@ -695,6 +701,20 @@ class _MyPageState extends State<MyPage> {
                   builder: (context) => const MyReviewsPage(),
                 ),
               ).then((_) => _loadData()); // 돌아올 때 데이터 새로고침
+            },
+          ),
+          const Divider(height: 1),
+          _buildMenuItem(
+            icon: Icons.explore,
+            title: '가보고 싶은 곳',
+            subtitle: 'SNS에서 발견한 장소',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WantToTryPage(),
+                ),
+              );
             },
           ),
           const Divider(height: 1),

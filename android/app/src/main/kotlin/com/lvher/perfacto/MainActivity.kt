@@ -1,4 +1,4 @@
-package com.example.perfacto
+package com.lvher.perfacto
 
 import io.flutter.embedding.android.FlutterActivity
 

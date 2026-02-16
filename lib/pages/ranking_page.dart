@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:perfacto/models/place_model.dart';
-import 'package:perfacto/services/api_service.dart';
+import 'package:perfacto/services/firestore_service.dart';
 
 class RankingPage extends StatefulWidget {
   const RankingPage({super.key});
@@ -49,13 +49,42 @@ class _RankingPageState extends State<RankingPage> {
     });
 
     try {
-      final data = await ApiService.getRanking(
-        categoryId: _selectedCategoryId,
-        district: _selectedDistrict,
-        limit: 50,
-      );
+      // Firebase에서 카테고리별 장소 가져오기
+      List<PlaceModel> allPlaces = [];
 
-      final places = data.map((json) => PlaceModel.fromJson(json)).toList();
+      if (_selectedCategoryId == null) {
+        // 전체 카테고리
+        final categories = ['restaurant', 'accommodation', 'cafe', 'attraction'];
+        for (String categoryCode in categories) {
+          final places = await FirestoreService.getPlacesByCategory(categoryCode: categoryCode);
+          allPlaces.addAll(places);
+        }
+      } else {
+        // 특정 카테고리
+        final categoryMap = {
+          1: 'restaurant',
+          2: 'accommodation',
+          3: 'cafe',
+          4: 'attraction',
+        };
+        final categoryCode = categoryMap[_selectedCategoryId];
+        if (categoryCode != null) {
+          allPlaces = await FirestoreService.getPlacesByCategory(categoryCode: categoryCode);
+        }
+      }
+
+      // 구역 필터링
+      if (_selectedDistrict != null) {
+        allPlaces = allPlaces.where((place) {
+          return place.address?.contains(_selectedDistrict!) ?? false;
+        }).toList();
+      }
+
+      // ELO 점수로 정렬 (내림차순)
+      allPlaces.sort((a, b) => (b.eloRating ?? 1200).compareTo(a.eloRating ?? 1200));
+
+      // 상위 50개만
+      final places = allPlaces.take(50).toList();
 
       setState(() {
         _places = places;

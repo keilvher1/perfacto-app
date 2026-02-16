@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
+import '../services/firestore_service.dart';
 
 /// 팔로잉/팔로워 목록 페이지
 class FollowListPage extends StatefulWidget {
@@ -48,8 +48,8 @@ class _FollowListPageState extends State<FollowListPage>
     });
 
     try {
-      final following = await ApiService.getFollowing(widget.userId);
-      final followers = await ApiService.getFollowers(widget.userId);
+      final following = await FirestoreService.getFollowing(widget.userId.toString());
+      final followers = await FirestoreService.getFollowers(widget.userId.toString());
 
       setState(() {
         _following = following;
@@ -67,9 +67,9 @@ class _FollowListPageState extends State<FollowListPage>
   Future<void> _toggleFollow(int targetUserId, bool isCurrentlyFollowing) async {
     try {
       if (isCurrentlyFollowing) {
-        await ApiService.unfollow(targetUserId);
+        await FirestoreService.unfollow(targetUserId.toString());
       } else {
-        await ApiService.follow(targetUserId);
+        await FirestoreService.follow(targetUserId.toString());
       }
 
       // 데이터 새로고침

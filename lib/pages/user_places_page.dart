@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:perfacto/models/place_model.dart';
-import 'package:perfacto/services/api_service.dart';
+import 'package:perfacto/services/firestore_service.dart';
 import 'package:perfacto/pages/place_detail_page.dart';
+import 'package:perfacto/widgets/cached_image_widget.dart';
 
 /// 특정 사용자의 저장한 장소 + 리뷰 남긴 장소 페이지
 class UserPlacesPage extends StatefulWidget {
@@ -36,9 +37,27 @@ class _UserPlacesPageState extends State<UserPlacesPage> {
     });
 
     try {
-      final data = await ApiService.getUserPlaces(widget.userId);
+      // 사용자가 리뷰한 장소들 가져오기
+      final reviews = await FirestoreService.getUserReviews(widget.userId.toString());
+
+      // 리뷰한 장소들의 ID 추출
+      final placeIds = reviews.map((r) => r.placeId).toSet().toList();
+
+      // 각 장소 정보 가져오기
+      final places = <PlaceModel>[];
+      for (final placeId in placeIds) {
+        try {
+          final place = await FirestoreService.getPlace(placeId);
+          if (place != null) {
+            places.add(place);
+          }
+        } catch (e) {
+          print('장소 로딩 실패 (ID: $placeId): $e');
+        }
+      }
+
       setState(() {
-        _places = data.map((p) => PlaceModel.fromJson(p)).toList();
+        _places = places;
         _isLoading = false;
       });
     } catch (e) {
@@ -173,18 +192,11 @@ class _UserPlacesPageState extends State<UserPlacesPage> {
               child: place.imageUrls.isNotEmpty
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        place.imageUrls.first,
+                      child: CachedImageWidget(
+                        imageUrl: place.imageUrls.first,
                         width: 80,
                         height: 80,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Icon(
-                            Icons.place,
-                            size: 40,
-                            color: Colors.white,
-                          );
-                        },
                       ),
                     )
                   : const Icon(

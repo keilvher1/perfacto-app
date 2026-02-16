@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/place_model.dart';
-import '../services/api_service.dart';
-import '../services/auth_service.dart';
+import '../services/firestore_service.dart';
+import '../services/firebase_auth_service.dart';
 import '../services/saved_places_service.dart';
 import 'place_detail_page.dart';
 import 'login_page.dart';
@@ -33,7 +33,7 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
     });
 
     // 로그인 여부 확인
-    final loggedIn = await AuthService.isLoggedIn();
+    final loggedIn = FirebaseAuthService.isLoggedIn;
 
     if (!loggedIn) {
       setState(() {
@@ -69,16 +69,15 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
         return;
       }
 
-      // 전체 카테고리의 장소 데이터 가져오기
+      // 전체 카테고리의 장소 데이터 가져오기 (Firebase)
       final List<PlaceModel> allPlaces = [];
-      for (int categoryId = 1; categoryId <= 4; categoryId++) {
+      final categories = ['restaurant', 'accommodation', 'cafe', 'attraction'];
+      for (String categoryCode in categories) {
         try {
-          final places = await ApiService.getPlaces(categoryId: categoryId, size: 100);
-          for (var placeData in places) {
-            allPlaces.add(PlaceModel.fromJson(placeData));
-          }
+          final places = await FirestoreService.getPlacesByCategory(categoryCode: categoryCode);
+          allPlaces.addAll(places);
         } catch (e) {
-          print('❌ DEBUG - 카테고리 $categoryId 로딩 실패: $e');
+          print('❌ DEBUG - 카테고리 $categoryCode 로딩 실패: $e');
         }
       }
 
@@ -99,7 +98,7 @@ class _SavedPlacesPageState extends State<SavedPlacesPage> {
     }
   }
 
-  Future<void> _unsavePlace(int placeId) async {
+  Future<void> _unsavePlace(String placeId) async {
     try {
       // 로컬에서 저장 취소
       await SavedPlacesService.unsavePlace(placeId);

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/review_model.dart';
-import '../services/api_service.dart';
+import '../services/firestore_service.dart';
 import '../models/place_model.dart';
 
 /// 3단계 리뷰 작성 페이지
@@ -72,11 +72,11 @@ class _ReviewWriteNewPageState extends State<ReviewWriteNewPage> {
     });
 
     try {
-      await ApiService.createReview(
+      await FirestoreService.createReview(
         placeId: widget.place.id,
         overallRating: _selectedRating!.name.toUpperCase(),
         reasons: _selectedReasons.map((r) => r.name.toUpperCase()).toList(),
-        comparedPlaceId: _comparedPlace?.id,
+        comparedPlaceId: _comparedPlace?.id.toString(),
         comparisonResult: _comparisonResult?.name.toUpperCase(),
       );
 

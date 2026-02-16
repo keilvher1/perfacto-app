@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:perfacto/services/auth_service.dart';
+import 'package:perfacto/services/firebase_auth_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -271,7 +271,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onPressed: () async {
               Navigator.pop(context);
               // TODO: 계정 삭제 API 호출
-              await AuthService.signOut();
+              await FirebaseAuthService.signOut();
               if (mounted) {
                 Navigator.pop(context, true); // 설정 페이지 닫기
                 ScaffoldMessenger.of(context).showSnackBar(

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:perfacto/services/auth_service.dart';
+import 'package:perfacto/services/firebase_auth_service.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -56,8 +56,8 @@ class _SignupPageState extends State<SignupPage> {
     });
 
     try {
-      // 백엔드 API로 회원가입
-      await AuthService.signUp(
+      // Firebase로 회원가입
+      await FirebaseAuthService.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         nickname: _nameController.text.trim(),

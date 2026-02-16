@@ -1,7 +1,7 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class PlaceModel {
-  final int id;
+  final String id;
   final String name;
   final String category;
   final String tag;
@@ -85,21 +85,44 @@ class PlaceModel {
     String? categoryCode;
     String? categoryName;
 
+    print('🔍 PlaceModel.fromJson for: ${data['name']}');
+    print('   categoryCode field: ${data['categoryCode']}');
+    print('   category field: ${data['category']} (type: ${data['category'].runtimeType})');
+
+    // 1️⃣ categoryCode 필드 우선 확인 (새 데이터 구조)
+    if (data['categoryCode'] is String) {
+      categoryCode = data['categoryCode'];
+      print('   ✅ Using categoryCode: $categoryCode');
+    }
+
+    // 2️⃣ category 필드 확인
     if (data['category'] is Map) {
       final categoryMap = data['category'] as Map<String, dynamic>;
       categoryId = categoryMap['id'];
-      categoryCode = categoryMap['code'];
+      categoryCode ??= categoryMap['code'];  // categoryCode가 없을 때만 사용
       categoryName = categoryMap['name'];
+      print('   ✅ category is Map, id: $categoryId, code: ${categoryMap['code']}');
     } else if (data['category'] is int) {
       categoryId = data['category'];
-    } else if (data['categoryId'] != null) {
-      categoryId = data['categoryId'];
+      print('   ✅ category is int: $categoryId');
+    } else if (data['category'] is String) {
+      categoryCode ??= data['category'];  // categoryCode가 없을 때만 사용
+      print('   ✅ category is String: $categoryCode');
     }
 
+    // 3️⃣ categoryId 필드 확인
+    if (categoryId == null && data['categoryId'] != null) {
+      categoryId = data['categoryId'];
+      print('   ✅ Using categoryId: $categoryId');
+    }
+
+    final finalCategory = categoryCode ?? _categoryIdToString(categoryId);
+    print('   📍 Final category: $finalCategory');
+
     return PlaceModel(
-      id: data['id'] is int ? data['id'] : int.tryParse(data['id']?.toString() ?? '0') ?? 0,
+      id: data['id']?.toString() ?? '',
       name: data['name'] ?? '',
-      category: categoryCode ?? (data['category'] is String ? data['category'] : _categoryIdToString(categoryId)),
+      category: finalCategory,
       tag: categoryName ?? (data['tag'] ?? _categoryIdToTag(categoryId)),
       distance: data['distance']?.toString() ?? '0km',
       address: data['address'],
@@ -148,4 +171,43 @@ class PlaceModel {
 
   // LatLng 반환
   LatLng get location => LatLng(latitude, longitude);
+
+  // 거리 업데이트 (copyWith 패턴)
+  PlaceModel copyWith({
+    String? id,
+    String? name,
+    String? category,
+    String? tag,
+    String? distance,
+    String? address,
+    String? district,
+    double? latitude,
+    double? longitude,
+    List<String>? imageUrls,
+    double? rating,
+    double? averageRating,
+    int? reviewCount,
+    int? saveCount,
+    bool? isSaved,
+    int? eloRating,
+  }) {
+    return PlaceModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      category: category ?? this.category,
+      tag: tag ?? this.tag,
+      distance: distance ?? this.distance,
+      address: address ?? this.address,
+      district: district ?? this.district,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      imageUrls: imageUrls ?? this.imageUrls,
+      rating: rating ?? this.rating,
+      averageRating: averageRating ?? this.averageRating,
+      reviewCount: reviewCount ?? this.reviewCount,
+      saveCount: saveCount ?? this.saveCount,
+      isSaved: isSaved ?? this.isSaved,
+      eloRating: eloRating ?? this.eloRating,
+    );
+  }
 }

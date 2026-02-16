@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'home_page.dart';
-import 'friends_page.dart';
 import 'ranking_page.dart';
+import 'coming_soon_page.dart';
 import 'my_page.dart';
 
 class MainScreen extends StatefulWidget {
@@ -19,8 +19,8 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _pages = [
     const HomePage(),
-    const FriendsPage(),
-    const RankingPage(),
+    const RankingPage(), // HOT: 인기 장소 랭킹
+    const ComingSoonPage(featureName: '포인트 기능'), // POINT: 준비 중
     const MyPage(),
   ];
 

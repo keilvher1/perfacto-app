@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:perfacto/services/api_service.dart';
+import 'package:perfacto/services/firestore_service.dart';
 
 class ReviewWritePage extends StatefulWidget {
-  final int placeId;
+  final String placeId;
   final String placeName;
 
   const ReviewWritePage({
@@ -80,11 +80,11 @@ class _ReviewWritePageState extends State<ReviewWritePage> {
     });
 
     try {
-      await ApiService.createReview(
+      await FirestoreService.createReview(
         placeId: widget.placeId,
         overallRating: _overallRating!,
         reasons: _selectedReasons.toList(),
-        comparedPlaceId: _comparedPlaceId,
+        comparedPlaceId: _comparedPlaceId?.toString(),
         comparisonResult: _comparisonResult,
       );
 

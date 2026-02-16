@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:perfacto/services/api_service.dart';
-import 'package:perfacto/services/auth_service.dart';
+import 'package:perfacto/services/firestore_service.dart';
+import 'package:perfacto/services/firebase_auth_service.dart';
 import 'package:perfacto/models/review_model.dart';
 import 'package:perfacto/pages/place_detail_page.dart';
 import 'package:intl/intl.dart';
@@ -33,17 +33,14 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
     });
 
     try {
-      final userIdStr = AuthService.currentUserId;
+      final userIdStr = FirebaseAuthService.currentUserId;
       if (userIdStr == null) {
         throw Exception('로그인이 필요합니다');
       }
 
-      final userId = int.parse(userIdStr);
-      final reviewsData = await ApiService.getUserReviews(userId);
+      final reviewsData = await FirestoreService.getUserReviews(userIdStr);
 
-      final reviews = reviewsData
-          .map((data) => ReviewModel.fromJson(data as Map<String, dynamic>))
-          .toList();
+      final reviews = reviewsData as List<ReviewModel>;
 
       setState(() {
         _reviews = reviews;
@@ -58,7 +55,7 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
     }
   }
 
-  Future<void> _deleteReview(String reviewId) async {
+  Future<void> _deleteReview(String placeId, String reviewId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -83,8 +80,7 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
 
     if (confirmed == true) {
       try {
-        final reviewIdInt = int.parse(reviewId);
-        await ApiService.deleteReview(reviewIdInt);
+        await FirestoreService.deleteReview(placeId, reviewId);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -206,15 +202,12 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
       child: InkWell(
         onTap: () {
           // 장소 상세 페이지로 이동
-          final placeIdInt = int.tryParse(review.placeId);
-          if (placeIdInt != null) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => PlaceDetailPage(placeId: placeIdInt),
-              ),
-            );
-          }
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PlaceDetailPage(placeId: review.placeId),
+            ),
+          );
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
@@ -239,7 +232,7 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
                   IconButton(
                     icon: const Icon(Icons.delete_outline),
                     color: Colors.red,
-                    onPressed: () => _deleteReview(review.id),
+                    onPressed: () => _deleteReview(review.placeId, review.id),
                     constraints: const BoxConstraints(),
                     padding: const EdgeInsets.all(8),
                   ),

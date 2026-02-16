@@ -38,6 +38,43 @@
 
   <!-- Google Maps JavaScript API -->
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDejvJZv2sqlYXx1YKafG3x7U_y4pb_R5s&libraries=places" defer></script>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
+
+  <!-- Firebase Configuration -->
+  <script>
+    // Firebase 설정 (firebase_options.dart의 web 설정과 동일)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDejvJZv2sqlYXx1YKafG3x7U_y4pb_R5s",
+      authDomain: "perfacto-7aa56.firebaseapp.com",
+      projectId: "perfacto-7aa56",
+      storageBucket: "perfacto-7aa56.firebasestorage.app",
+      messagingSenderId: "22217432676",
+      appId: "1:22217432676:web:250ac9e28d4726217ac971",
+      measurementId: "G-2GX25C97VH"
+    };
+
+    // Firebase 초기화
+    firebase.initializeApp(firebaseConfig);
+  </script>
+
+  <!-- Service Worker 등록 -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/firebase-messaging-sw.js')
+        .then((registration) => {
+          console.log('Service Worker registered:', registration);
+        })
+        .catch((error) => {
+          console.error('Service Worker registration failed:', error);
+        });
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

@@ -1,7 +1,11 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 
+/// ⚠️ DEPRECATED: 이 서비스는 더 이상 사용되지 않습니다.
+/// FirebaseAuthService와 Riverpod auth_provider를 대신 사용하세요.
+///
 /// 인증 서비스 (백엔드 API 사용)
+@Deprecated('Use FirebaseAuthService and auth_provider instead')
 class AuthService {
   static const String _keyAccessToken = 'access_token';
   static const String _keyRefreshToken = 'refresh_token';

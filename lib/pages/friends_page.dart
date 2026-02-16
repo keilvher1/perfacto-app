@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:perfacto/services/api_service.dart';
+import 'package:perfacto/services/firestore_service.dart';
+import 'package:perfacto/services/firebase_auth_service.dart';
 import 'package:perfacto/pages/user_places_page.dart';
 
 /// 친구 리스트 페이지 (카카오톡 스타일)
@@ -35,9 +36,10 @@ class _FriendsPageState extends State<FriendsPage> {
     });
 
     try {
-      // TODO: 실제 사용자 ID로 변경
-      final userId = 1;
-      final following = await ApiService.getFollowing(userId);
+      // Firebase 사용자 ID 사용
+      final userId = FirebaseAuthService.currentUserId;
+      if (userId == null) return;
+      final following = await FirestoreService.getFollowing(userId);
 
       if (mounted) {
         setState(() {
@@ -71,7 +73,7 @@ class _FriendsPageState extends State<FriendsPage> {
     });
 
     try {
-      final results = await ApiService.searchUsers(query.trim());
+      final results = await FirebaseAuthService.searchUsers(query.trim());
       setState(() {
         _searchResults = results;
       });
@@ -87,9 +89,9 @@ class _FriendsPageState extends State<FriendsPage> {
   Future<void> _toggleFollow(int userId, bool isFollowing) async {
     try {
       if (isFollowing) {
-        await ApiService.unfollow(userId);
+        await FirestoreService.unfollow(userId.toString());
       } else {
-        await ApiService.follow(userId);
+        await FirestoreService.follow(userId.toString());
       }
 
       // 목록 새로고침

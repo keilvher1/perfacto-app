@@ -1,18 +1,20 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:perfacto/config/api_config.dart';
 
 /// Perfacto 백엔드 API 서비스
+/// ⚠️ 주의: Firebase로 마이그레이션 완료. 레거시 코드
 class ApiService {
-  // 배포된 EC2 서버 주소
-  static const String baseUrl = 'http://3.38.160.198:8080';
+  // API Base URL (환경 변수에서 로드)
+  static String get baseUrl => ApiConfig.baseUrl;
 
-  // 타임아웃 설정 (서버 다운 시 빠른 실패를 위해 10초로 단축)
-  static const Duration requestTimeout = Duration(seconds: 10);
+  // 타임아웃 설정
+  static Duration get requestTimeout => Duration(milliseconds: ApiConfig.timeoutMs);
 
   // 재시도 설정
-  static const int maxRetries = 2; // 최대 재시도 횟수
-  static const Duration retryDelay = Duration(seconds: 1); // 재시도 간격
+  static int get maxRetries => ApiConfig.maxRetries;
+  static const Duration retryDelay = Duration(seconds: 1);
 
   // 인증 토큰 저장 (로그인 후 설정)
   static String? _accessToken;
@@ -323,7 +325,7 @@ class ApiService {
   }
 
   /// 장소 상세 조회
-  static Future<Map<String, dynamic>> getPlace(int placeId) async {
+  static Future<Map<String, dynamic>> getPlace(String placeId) async {
     final response = await get('/perfacto/every/places/$placeId');
     return response['data'];
   }
@@ -718,5 +720,225 @@ class ApiService {
       print('❌ 이미지 업로드 실패: $e');
       rethrow;
     }
+  }
+
+  // ==================== Match Score API ====================
+
+  /// 특정 사용자와의 Match Score 조회
+  static Future<Map<String, dynamic>> getMatchScore(int targetUserId) async {
+    try {
+      final response = await getAuth('/perfacto/api/match-score/$targetUserId');
+      return response['data'];
+    } catch (e) {
+      print('❌ DEBUG - getMatchScore error: $e');
+      // 백엔드 미구현 시 더미 데이터 반환
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ Match Score API 미구현: 더미 데이터 반환');
+        return {
+          'userId': _accessToken != null ? 1 : 0,
+          'targetUserId': targetUserId,
+          'score': 0.0,
+          'commonPlacesCount': 0,
+          'compatibility': 'NEUTRAL',
+          'calculatedAt': DateTime.now().toIso8601String(),
+        };
+      }
+      rethrow;
+    }
+  }
+
+  /// 내 팔로잉 중 Match Score Top 10
+  static Future<List<Map<String, dynamic>>> getTopMatchScores() async {
+    try {
+      final response = await getAuth('/perfacto/api/match-score/top');
+      return List<Map<String, dynamic>>.from(response['data']);
+    } catch (e) {
+      print('❌ DEBUG - getTopMatchScores error: $e');
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ Top Match Score API 미구현: 빈 배열 반환');
+        return [];
+      }
+      rethrow;
+    }
+  }
+
+  /// 전체 사용자 중 Match Score 높은 순 (추천 친구)
+  static Future<List<Map<String, dynamic>>> getRecommendedFriends({
+    int page = 0,
+    int size = 20,
+  }) async {
+    try {
+      final response = await getAuth(
+        '/perfacto/api/match-score/recommendations?page=$page&size=$size',
+      );
+      return List<Map<String, dynamic>>.from(response['data']['content']);
+    } catch (e) {
+      print('❌ DEBUG - getRecommendedFriends error: $e');
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ Recommended Friends API 미구현: 빈 배열 반환');
+        return [];
+      }
+      rethrow;
+    }
+  }
+
+  // ==================== Predicted Score API ====================
+
+  /// 장소의 예측 점수 조회
+  static Future<Map<String, dynamic>?> getPredictedScore(int placeId) async {
+    try {
+      final response = await getAuth('/perfacto/api/predicted-score/$placeId');
+      return response['data'];
+    } catch (e) {
+      print('❌ DEBUG - getPredictedScore error: $e');
+      // 로그인 안 했거나 데이터 부족 시 null 반환
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ Predicted Score API 미구현: null 반환');
+        return null;
+      }
+      return null;
+    }
+  }
+
+  /// 여러 장소의 예측 점수 일괄 조회
+  static Future<Map<int, Map<String, dynamic>>> getPredictedScoresBatch(
+    List<int> placeIds,
+  ) async {
+    try {
+      final response = await postAuth('/perfacto/api/predicted-score/batch', {
+        'placeIds': placeIds,
+      });
+
+      final Map<int, Map<String, dynamic>> result = {};
+      if (response['data'] is List) {
+        for (final item in response['data']) {
+          result[item['placeId'] as int] = item;
+        }
+      }
+      return result;
+    } catch (e) {
+      print('❌ DEBUG - getPredictedScoresBatch error: $e');
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ Predicted Score Batch API 미구현: 빈 맵 반환');
+        return {};
+      }
+      return {};
+    }
+  }
+
+  // ==================== Gamification API ====================
+
+  /// 글로벌 리더보드 조회
+  static Future<List<Map<String, dynamic>>> getGlobalLeaderboard({
+    int page = 0,
+    int size = 50,
+  }) async {
+    try {
+      final response = await get(
+        '/perfacto/every/leaderboard/global?page=$page&size=$size',
+      );
+      if (response['data'] is List) {
+        return List<Map<String, dynamic>>.from(response['data']);
+      } else if (response['data']['content'] is List) {
+        return List<Map<String, dynamic>>.from(response['data']['content']);
+      }
+      return [];
+    } catch (e) {
+      print('❌ DEBUG - getGlobalLeaderboard error: $e');
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ Global Leaderboard API 미구현: 빈 배열 반환');
+        return [];
+      }
+      return [];
+    }
+  }
+
+  /// 도시별 리더보드 조회
+  static Future<List<Map<String, dynamic>>> getCityLeaderboard(
+    String city, {
+    int page = 0,
+    int size = 50,
+  }) async {
+    try {
+      final response = await get(
+        '/perfacto/every/leaderboard/city/$city?page=$page&size=$size',
+      );
+      if (response['data'] is List) {
+        return List<Map<String, dynamic>>.from(response['data']);
+      } else if (response['data']['content'] is List) {
+        return List<Map<String, dynamic>>.from(response['data']['content']);
+      }
+      return [];
+    } catch (e) {
+      print('❌ DEBUG - getCityLeaderboard error: $e');
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ City Leaderboard API 미구현: 빈 배열 반환');
+        return [];
+      }
+      return [];
+    }
+  }
+
+  /// 내 Streak 정보 조회
+  static Future<Map<String, dynamic>> getMyStreak() async {
+    try {
+      final response = await getAuth('/perfacto/api/streak');
+      return response['data'];
+    } catch (e) {
+      print('❌ DEBUG - getMyStreak error: $e');
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ Streak API 미구현: 더미 데이터 반환');
+        return {
+          'currentStreak': 0,
+          'longestStreak': 0,
+          'lastReviewDate': null,
+          'reviewedToday': false,
+          'hoursUntilStreakBreak': 24,
+        };
+      }
+      rethrow;
+    }
+  }
+
+  /// 내 잠금 해제 상태 조회
+  static Future<Map<String, bool>> getUnlockedFeatures() async {
+    try {
+      final response = await getAuth('/perfacto/api/features/unlocked');
+      return Map<String, bool>.from(response['data']);
+    } catch (e) {
+      print('❌ DEBUG - getUnlockedFeatures error: $e');
+      if (e.toString().contains('404') || e.toString().contains('NOT_FOUND')) {
+        print('⚠️ Unlocked Features API 미구현: 빈 맵 반환');
+        return {};
+      }
+      return {};
+    }
+  }
+
+  // ==================== 태그 API ====================
+
+  /// 리뷰 작성 시 태그 포함 (createReview 확장)
+  ///
+  /// 기존 createReview 메서드를 수정하여 tags 파라미터 추가
+  static Future<Map<String, dynamic>> createReviewWithTags({
+    required int placeId,
+    required String overallRating, // 'GOOD', 'NEUTRAL', 'BAD'
+    required List<String> reasons, // ReviewReason enum values
+    List<String>? tags, // PlaceTag enum codes
+    int? comparedPlaceId,
+    String? comparisonResult, // 'BETTER', 'SIMILAR', 'WORSE'
+  }) async {
+    final Map<String, dynamic> body = {
+      'placeId': placeId,
+      'overallRating': overallRating,
+      'reasons': reasons,
+    };
+
+    if (tags != null && tags.isNotEmpty) body['tags'] = tags;
+    if (comparedPlaceId != null) body['comparedPlaceId'] = comparedPlaceId;
+    if (comparisonResult != null) body['comparisonResult'] = comparisonResult;
+
+    final response = await postAuth('/perfacto/api/reviews', body);
+    return response['data'];
   }
 }
