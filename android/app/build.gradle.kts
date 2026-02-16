@@ -11,7 +11,8 @@ plugins {
 android {
     namespace = "com.lvher.perfacto"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
+    // NDK 버전을 Flutter 기본값 사용 (안정성을 위해 명시적 버전 제거)
+    // ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
