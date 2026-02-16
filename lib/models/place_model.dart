@@ -37,14 +37,34 @@ class PlaceModel {
     this.eloRating,
   });
 
-  // 안전한 double 파싱
+  // 안전한 double 파싱 (NaN/Infinity 방어)
   static double _parseDouble(dynamic value) {
     if (value == null) return 0.0;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
+    double result;
+    if (value is double) {
+      result = value;
+    } else if (value is int) {
+      result = value.toDouble();
+    } else if (value is String) {
+      result = double.tryParse(value) ?? 0.0;
+    } else {
+      return 0.0;
+    }
+    // NaN/Infinity 방어
+    if (result.isNaN || result.isInfinite) return 0.0;
+    return result;
   }
+
+  // 좌표 유효성 검사 (포항 범위)
+  static bool _isValidCoordinate(double lat, double lng) {
+    // 포항시 범위: 위도 35.9~36.1, 경도 129.2~129.5
+    // 이 범위를 벗어나면 잘못된 데이터로 판단
+    return lat >= 35.9 && lat <= 36.1 && lng >= 129.2 && lng <= 129.5;
+  }
+
+  // 포항 중심 좌표 (잘못된 좌표 대체용)
+  static const double _pohangCenterLat = 36.019;
+  static const double _pohangCenterLng = 129.343;
 
   // 카테고리 ID를 문자열로 변환
   static String _categoryIdToString(int? categoryId) {
@@ -119,6 +139,17 @@ class PlaceModel {
     final finalCategory = categoryCode ?? _categoryIdToString(categoryId);
     print('   📍 Final category: $finalCategory');
 
+    // 좌표 파싱 및 검증
+    double lat = _parseDouble(data['latitude']);
+    double lng = _parseDouble(data['longitude']);
+
+    // 유효하지 않은 좌표는 포항 중심으로 대체
+    if (!_isValidCoordinate(lat, lng)) {
+      print('   ⚠️ Invalid coordinates ($lat, $lng) → Using Pohang center');
+      lat = _pohangCenterLat;
+      lng = _pohangCenterLng;
+    }
+
     return PlaceModel(
       id: data['id']?.toString() ?? '',
       name: data['name'] ?? '',
@@ -127,8 +158,8 @@ class PlaceModel {
       distance: data['distance']?.toString() ?? '0km',
       address: data['address'],
       district: data['district'],
-      latitude: _parseDouble(data['latitude']),
-      longitude: _parseDouble(data['longitude']),
+      latitude: lat,
+      longitude: lng,
       imageUrls: data['imageUrls'] != null
           ? (data['imageUrls'] is List
               ? List<String>.from(data['imageUrls'])

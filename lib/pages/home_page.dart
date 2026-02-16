@@ -368,7 +368,17 @@ class _HomePageState extends ConsumerState<HomePage> {
         'assets/pohang_districts.json',
       );
       final Map<String, dynamic> geoJson = json.decode(jsonString);
-      final List<dynamic> features = geoJson['features'];
+
+      // features 배열 검증
+      final List<dynamic>? features = geoJson['features'] as List<dynamic>?;
+      if (features == null || features.isEmpty) {
+        debugPrint('⚠️ GeoJSON features is null or empty');
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
       final random = Random();
 
       for (var feature in features) {
@@ -426,11 +436,29 @@ class _HomePageState extends ConsumerState<HomePage> {
     List<dynamic> coordinates,
     Color color,
   ) {
+    // coordinates 배열 검증
+    if (coordinates.isEmpty || coordinates[0] == null) {
+      debugPrint('⚠️ Invalid polygon coordinates for $shortName');
+      return;
+    }
+
     final List<LatLng> points = [];
     for (var ring in coordinates[0]) {
-      final double lng = ring[0].toDouble();
-      final double lat = ring[1].toDouble();
-      points.add(LatLng(lat, lng));
+      if (ring == null || ring.length < 2) continue;
+      try {
+        final double lng = ring[0].toDouble();
+        final double lat = ring[1].toDouble();
+        points.add(LatLng(lat, lng));
+      } catch (e) {
+        debugPrint('⚠️ Invalid coordinate format: $e');
+        continue;
+      }
+    }
+
+    // 유효한 점이 3개 이상일 때만 폴리곤 생성
+    if (points.length < 3) {
+      debugPrint('⚠️ Not enough valid points for polygon $shortName');
+      return;
     }
 
     _polygons.add(
@@ -458,11 +486,23 @@ class _HomePageState extends ConsumerState<HomePage> {
     List<LatLng> allPoints = [];
 
     for (var polygon in coordinates) {
+      // polygon 배열 검증
+      if (polygon == null || polygon.isEmpty || polygon[0] == null) {
+        debugPrint('⚠️ Invalid multipolygon coordinates for $shortName');
+        continue;
+      }
+
       final List<LatLng> points = [];
       for (var ring in polygon[0]) {
-        final double lng = ring[0].toDouble();
-        final double lat = ring[1].toDouble();
-        points.add(LatLng(lat, lng));
+        if (ring == null || ring.length < 2) continue;
+        try {
+          final double lng = ring[0].toDouble();
+          final double lat = ring[1].toDouble();
+          points.add(LatLng(lat, lng));
+        } catch (e) {
+          debugPrint('⚠️ Invalid coordinate format: $e');
+          continue;
+        }
       }
 
       allPoints.addAll(points);

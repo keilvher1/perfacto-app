@@ -113,8 +113,27 @@ class ReviewModel {
           ? json['likeCount']
           : (int.tryParse(json['likeCount']?.toString() ?? '0') ?? 0),
       isLikedByMe: json['isLikedByMe'] ?? false,
-      createdAt: DateTime.parse(json['createdAt']),
+      createdAt: _parseDateTime(json['createdAt']),
     );
+  }
+
+  // 안전한 DateTime 파싱
+  static DateTime _parseDateTime(dynamic value) {
+    if (value == null) return DateTime.now();
+
+    try {
+      if (value is String) {
+        final parsed = DateTime.tryParse(value);
+        return parsed ?? DateTime.now();
+      } else if (value is DateTime) {
+        return value;
+      } else {
+        return DateTime.now();
+      }
+    } catch (e) {
+      print('⚠️ DateTime parsing error: $e');
+      return DateTime.now();
+    }
   }
 
   static ReviewRating _parseRating(String? rating) {

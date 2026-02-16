@@ -4,6 +4,7 @@ import 'package:perfacto/services/firebase_auth_service.dart';
 import 'package:perfacto/services/firestore_service.dart';
 import 'package:perfacto/services/saved_places_service.dart';
 import 'package:perfacto/providers/auth_provider.dart';
+import 'package:perfacto/utils/app_logger.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -257,7 +258,7 @@ class _MyPageState extends ConsumerState<MyPage> {
                   radius: 50,
                   backgroundColor: const Color(0xFFD9D9D9),
                   backgroundImage: _userProfile?['profileImageUrl'] != null
-                      ? NetworkImage(_userProfile!['profileImageUrl'])
+                      ? NetworkImage(_userProfile?['profileImageUrl'] ?? '')
                       : null,
                   child: _userProfile?['profileImageUrl'] == null
                       ? const Icon(
@@ -571,16 +572,20 @@ class _MyPageState extends ConsumerState<MyPage> {
             onTap: () {
               final userIdStr = FirebaseAuthService.currentUserId;
               if (userIdStr != null) {
-                final userId = int.parse(userIdStr);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => FollowListPage(
-                      userId: userId,
-                      initialTabIndex: 0,
+                final userId = int.tryParse(userIdStr);
+                if (userId != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FollowListPage(
+                        userId: userId,
+                        initialTabIndex: 0,
+                      ),
                     ),
-                  ),
-                );
+                  );
+                } else {
+                  AppLogger.error('Invalid userId format: $userIdStr');
+                }
               }
             },
           ),
@@ -595,16 +600,20 @@ class _MyPageState extends ConsumerState<MyPage> {
             onTap: () {
               final userIdStr = FirebaseAuthService.currentUserId;
               if (userIdStr != null) {
-                final userId = int.parse(userIdStr);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => FollowListPage(
-                      userId: userId,
-                      initialTabIndex: 1,
+                final userId = int.tryParse(userIdStr);
+                if (userId != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FollowListPage(
+                        userId: userId,
+                        initialTabIndex: 1,
+                      ),
                     ),
-                  ),
-                );
+                  );
+                } else {
+                  AppLogger.error('Invalid userId format: $userIdStr');
+                }
               }
             },
           ),
